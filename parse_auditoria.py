@@ -8,6 +8,7 @@ Se python nao estiver no PATH: powershell -ExecutionPolicy Bypass -File parse_au
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from collections import defaultdict
@@ -162,6 +163,128 @@ def find_txt() -> Path:
     if extras:
         return extras[0]
     raise FileNotFoundError("Nenhum arquivo .txt encontrado na pasta.")
+
+
+AUDIT_HEADER = (
+    "SEQAUXNOTAFISCAL;NROEMPRESA;NOMEREDUZIDO;NUMERONF;SERIENF;"
+    "SEQPESSOA;NOMEPESSOA;TIPNOTAFISCAL;OPERACAO;PRODUTO;DIASPRAZO;"
+    "DESCGENERICA;VALORANTIGO;VALORNOVO;DTAHORALTERACAO;USUALTERACAO;"
+    "TERMINALUSUALTERA;APPORIGEM;VERSAOSISTEMA;NFECHAVEACESSO"
+)
+RE_CHAVE_NFE = re.compile(r"^\d{44}$")
+RE_CHAVE_SCI = re.compile(r"[eE][+-]?\d+")
+
+
+def _first_line(path: Path) -> str:
+    with path.open("r", encoding="cp1252", errors="replace", newline="") as fh:
+        return fh.readline()
+
+
+def is_audit_txt(path: Path) -> bool:
+    header = _first_line(path).strip().upper().replace("\t", ";")
+    return header.startswith("SEQAUXNOTAFISCAL")
+
+
+def sniff_delim(header: str) -> str:
+    if header.count("\t") >= 19:
+        return "\t"
+    return ";"
+
+
+def split_audit_row(line: str, delim: str) -> list[str] | None:
+    parts = line.rstrip("\r\n").split(delim)
+    if len(parts) < 20:
+        return None
+    if len(parts) > 20:
+        parts = parts[:19] + [delim.join(parts[19:])]
+    return parts
+
+
+def chave_nfe(raw: str) -> str:
+    t = (raw or "").strip()
+    if RE_CHAVE_SCI.search(t):
+        return ""
+    digits = re.sub(r"\D", "", t)
+    if len(digits) >= 44:
+        return digits[:44]
+    return t if RE_CHAVE_NFE.match(t) else ""
+
+
+def row_key(parts: list[str]) -> tuple[str, ...]:
+    """Identidade da alteracao. Chave NFe entra so no desempate: export Excel corrompe NFECHAVEACESSO."""
+
+    def g(i: int) -> str:
+        return parts[i].strip() if i < len(parts) else ""
+
+    return (g(0), g(8), g(9), g(11), g(12), g(13), g(14), g(15))
+
+
+def row_melhor(atual: list[str], novo: list[str]) -> bool:
+    ch_atual = chave_nfe(atual[19] if len(atual) > 19 else "")
+    ch_novo = chave_nfe(novo[19] if len(novo) > 19 else "")
+    return bool(ch_novo) and not ch_atual
+
+
+def listar_lotes_auditoria() -> list[Path]:
+    dest = TXT_CANDIDATES[0]
+    dest_res = dest.resolve() if dest.exists() else None
+    lotes: list[Path] = []
+    if dest.exists() and is_audit_txt(dest):
+        lotes.append(dest)
+    for path in sorted(BASE.glob("*.txt"), key=lambda p: p.name.lower()):
+        if dest_res and path.resolve() == dest_res:
+            continue
+        if is_audit_txt(path):
+            lotes.append(path)
+    return lotes
+
+
+def consolidar_base() -> tuple[Path, int]:
+    """Une TXTs de auditoria em auditoria central.txt (base 0), sem duplicar eventos."""
+    dest = TXT_CANDIDATES[0]
+    lotes = listar_lotes_auditoria()
+    if not lotes:
+        raise FileNotFoundError("Nenhum TXT de auditoria (cabecalho SEQAUXNOTAFISCAL) na pasta.")
+
+    ordered: dict[tuple[str, ...], list[str]] = {}
+    lidos = 0
+    duplicados = 0
+    for path in lotes:
+        header = _first_line(path)
+        delim = sniff_delim(header)
+        with path.open("r", encoding="cp1252", errors="replace", newline="") as fh:
+            first = True
+            for line in fh:
+                if first:
+                    first = False
+                    continue
+                if not line.strip():
+                    continue
+                parts = split_audit_row(line, delim)
+                if not parts:
+                    continue
+                if parts[0].strip().upper() == "SEQAUXNOTAFISCAL":
+                    continue
+                lidos += 1
+                key = row_key(parts)
+                if key in ordered:
+                    duplicados += 1
+                    if row_melhor(ordered[key], parts):
+                        ordered[key] = parts
+                    continue
+                ordered[key] = parts
+
+    tmp = dest.with_suffix(dest.suffix + ".tmp")
+    with tmp.open("w", encoding="cp1252", errors="replace", newline="\r\n") as out:
+        out.write(AUDIT_HEADER + "\n")
+        for parts in ordered.values():
+            out.write(";".join(parts) + "\n")
+    os.replace(tmp, dest)
+    print(
+        f"Base 0: {len(ordered)} linhas unicas de {len(lotes)} lote(s) "
+        f"({lidos} lidas, {duplicados} duplicatas ignoradas) -> {dest.name}"
+    )
+    return dest, len(lotes)
 
 
 def parse_line(line: str) -> dict | None:
@@ -774,9 +897,15 @@ def parse(path: Path) -> dict:
 
 
 def main() -> int:
-    path = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else find_txt()
+    n_lotes = 0
+    if len(sys.argv) > 1:
+        path = Path(sys.argv[1]).resolve()
+    else:
+        path, n_lotes = consolidar_base()
     print(f"Lendo {path} ...")
     payload = parse(path)
+    if n_lotes:
+        payload["arquivo"] = f"{path.name} ({n_lotes} lotes)"
     t = payload["totais"]
     print(
         f"Eventos={t['eventos']} | NFs entrada={t['nfs_entrada']} | "

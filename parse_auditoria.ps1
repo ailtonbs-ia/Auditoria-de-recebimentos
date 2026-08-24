@@ -3,8 +3,8 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $enc = [System.Text.Encoding]::GetEncoding(1252)
 $base = Split-Path -Parent $MyInvocation.MyCommand.Path
-$txt = Get-ChildItem -LiteralPath $base -Filter "*.txt" | Select-Object -First 1
-if (-not $txt) { throw "Nenhum TXT na pasta." }
+$destTxt = Join-Path $base "auditoria central.txt"
+$auditHeader = "SEQAUXNOTAFISCAL;NROEMPRESA;NOMEREDUZIDO;NUMERONF;SERIENF;SEQPESSOA;NOMEPESSOA;TIPNOTAFISCAL;OPERACAO;PRODUTO;DIASPRAZO;DESCGENERICA;VALORANTIGO;VALORNOVO;DTAHORALTERACAO;USUALTERACAO;TERMINALUSUALTERA;APPORIGEM;VERSAOSISTEMA;NFECHAVEACESSO"
 
 function Fold([string]$s) {
   if ([string]::IsNullOrEmpty($s)) { return "" }
@@ -157,6 +157,115 @@ function Ler-ListaUsuarios([string]$dir) {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
   }
 }
+
+function Test-AuditTxt([string]$path) {
+  $sr = New-Object System.IO.StreamReader($path, $enc)
+  try { $line = $sr.ReadLine() } finally { $sr.Close() }
+  if (-not $line) { return $false }
+  $n = $line.Trim().ToUpperInvariant().Replace("`t", ";")
+  return $n.StartsWith("SEQAUXNOTAFISCAL")
+}
+
+function Get-AuditDelim([string]$header) {
+  $tabs = ($header.ToCharArray() | Where-Object { $_ -eq "`t" }).Count
+  if ($tabs -ge 19) { return "`t" }
+  return ";"
+}
+
+function Split-AuditRow([string]$line, [string]$delim) {
+  $parts = $line.Split($delim)
+  if ($parts.Length -lt 20) { return $null }
+  if ($parts.Length -gt 20) {
+    $tail = ($parts[19..($parts.Length - 1)] -join $delim)
+    $parts = @($parts[0..18]) + @($tail)
+  }
+  return $parts
+}
+
+function Get-ChaveNfe([string]$raw) {
+  if ([string]::IsNullOrWhiteSpace($raw)) { return "" }
+  $t = $raw.Trim()
+  if ($t -match "[eE][+-]?\d+") { return "" }
+  $digits = [regex]::Replace($t, "\D", "")
+  if ($digits.Length -ge 44) { return $digits.Substring(0, 44) }
+  return ""
+}
+
+function Get-RowKey([string[]]$parts) {
+  $vals = New-Object string[] 8
+  $idx = @(0, 8, 9, 11, 12, 13, 14, 15)
+  for ($n = 0; $n -lt 8; $n++) {
+    $i = $idx[$n]
+    if ($i -lt $parts.Length -and $null -ne $parts[$i]) { $vals[$n] = $parts[$i].Trim() }
+    else { $vals[$n] = "" }
+  }
+  return ($vals -join "|")
+}
+
+function Get-AuditLotes {
+  $list = New-Object System.Collections.Generic.List[string]
+  if ((Test-Path -LiteralPath $destTxt) -and (Test-AuditTxt $destTxt)) {
+    $list.Add($destTxt)
+  }
+  $destFull = $null
+  if (Test-Path -LiteralPath $destTxt) { $destFull = [IO.Path]::GetFullPath($destTxt) }
+  Get-ChildItem -LiteralPath $base -Filter "*.txt" | Sort-Object Name | ForEach-Object {
+    $full = $_.FullName
+    if ($destFull -and ([IO.Path]::GetFullPath($full) -eq $destFull)) { return }
+    if (Test-AuditTxt $full) { $list.Add($full) }
+  }
+  return $list
+}
+
+function Consolidate-Base {
+  $lotes = @(Get-AuditLotes)
+  if (-not $lotes.Count) { throw "Nenhum TXT de auditoria (cabecalho SEQAUXNOTAFISCAL) na pasta." }
+  $map = New-Object "System.Collections.Generic.Dictionary[string,string[]]"
+  $order = New-Object System.Collections.Generic.List[string]
+  $lidos = 0
+  $dups = 0
+  foreach ($path in $lotes) {
+    $sr = New-Object System.IO.StreamReader($path, $enc)
+    try {
+      $header = $sr.ReadLine()
+      $delim = Get-AuditDelim $header
+      while ($null -ne ($line = $sr.ReadLine())) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        $parts = Split-AuditRow $line $delim
+        if ($null -eq $parts) { continue }
+        if ($parts[0].Trim().ToUpperInvariant() -eq "SEQAUXNOTAFISCAL") { continue }
+        $lidos++
+        $key = Get-RowKey $parts
+        if ($map.ContainsKey($key)) {
+          $dups++
+          $old = $map[$key]
+          $chOld = Get-ChaveNfe $(if ($old.Length -gt 19) { $old[19] } else { "" })
+          $chNew = Get-ChaveNfe $(if ($parts.Length -gt 19) { $parts[19] } else { "" })
+          if ($chNew -and -not $chOld) { $map[$key] = $parts }
+          continue
+        }
+        $map[$key] = $parts
+        $order.Add($key)
+      }
+    }
+    finally { $sr.Close() }
+  }
+  $tmp = "$destTxt.tmp"
+  $sw = New-Object System.IO.StreamWriter($tmp, $false, $enc)
+  try {
+    $sw.WriteLine($auditHeader)
+    foreach ($k in $order) {
+      $sw.WriteLine(($map[$k] -join ";"))
+    }
+  }
+  finally { $sw.Close() }
+  Move-Item -LiteralPath $tmp -Destination $destTxt -Force
+  Write-Host ("Base 0: {0} linhas unicas de {1} lote(s) ({2} lidas, {3} duplicatas ignoradas) -> auditoria central.txt" -f $order.Count, $lotes.Count, $lidos, $dups)
+  return $lotes.Count
+}
+
+$nLotes = Consolidate-Base
+$txt = Get-Item -LiteralPath $destTxt
 
 $script:usuariosMap = @{}
 $listaUsuarios = Ler-ListaUsuarios $base
@@ -445,7 +554,7 @@ foreach ($m in $listaUsuarios.equipe) {
 
 $payload = @{
   gerado_em = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
-  arquivo = $txt.Name
+  arquivo = $(if ($nLotes) { "{0} ({1} lotes)" -f $txt.Name, $nLotes } else { $txt.Name })
   usuarios_arquivo = $listaUsuarios.arquivo
   periodo = @{ inicio = $(if ($datas) { $datas[0] } else { "" }); fim = $(if ($datas) { $datas[-1] } else { "" }) }
   totais = @{

@@ -15,7 +15,7 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: var(--font); }
-body { min-height: 100vh; }
+body { min-height: 100vh; display: flex; flex-direction: column; }
 
 .topbar {
   display: flex;
@@ -44,7 +44,14 @@ body { min-height: 100vh; }
 }
 .topbar h1 { margin: 0; font-size: 18px; font-weight: 800; letter-spacing: -0.02em; }
 .topbar p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
-.meta { text-align: right; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.wrap { flex: 1; }
+.footer {
+  margin-top: auto;
+  padding: 12px 22px 16px;
+  border-top: 1px solid var(--line);
+  background: #14161b;
+}
+.meta { color: var(--muted); font-size: 12px; line-height: 1.5; }
 
 .tabs { display: flex; gap: 6px; padding: 12px 22px 0; }
 .tab {
@@ -353,7 +360,6 @@ tr.clickable { cursor: pointer; }
 @media (max-width: 720px) {
   .kpis { grid-template-columns: 1fr 1fr; }
   .topbar { flex-direction: column; align-items: flex-start; }
-  .meta { text-align: left; }
   .logo-wrap { height: 56px; width: 86px; }
   .logo { height: 56px; width: 86px; }
   .team { grid-template-columns: 1fr; }

@@ -414,7 +414,7 @@ function renderKpis() {
     const topForn = x.fornecedores[0];
     const tipoPct = topTipo && x.inc.length ? (topTipo.itens / x.inc.length) * 100 : 0;
     $("kpis").innerHTML = `
-      <article class="card"><div class="lbl">NFs no recorte</div><div class="val">${fmt(x.lanc.length)}</div><div class="sub">lote ${fmt(t.nfs_entrada)}</div></article>
+      <article class="card"><div class="lbl">NFs no periodo</div><div class="val">${fmt(x.lanc.length)}</div><div class="sub">lote ${fmt(t.nfs_entrada)}</div></article>
       <article class="card warn"><div class="lbl">NFs inconsistentes</div><div class="val">${fmt(x.nfsInc)}</div><div class="sub">${fmt(x.inc.length)} itens</div></article>
       <article class="card bad"><div class="lbl">Taxa de inconsistencia</div><div class="val">${fmtPct(taxa)}</div><div class="sub">lote ${fmtPct(t.taxa_nfs)}</div></article>
       <article class="card"><div class="lbl">Tipo dominante</div><div class="val-text" title="${esc(topTipo ? TIPO_LABEL[topTipo.nome] || topTipo.nome : dash)}">${esc(topTipo ? TIPO_LABEL[topTipo.nome] || topTipo.nome : dash)}</div><div class="sub">${topTipo ? fmtPct(tipoPct) + " dos itens" : ""}</div></article>
@@ -701,7 +701,7 @@ function boot(data) {
   (DATA.nfs || []).sort((a, b) => String(b.iso || "").localeCompare(String(a.iso || "")));
   const p = data.periodo || {};
   const planilha = data.usuarios_arquivo ? ` | ${data.usuarios_arquivo}` : "";
-  $("meta").innerHTML = `${esc(data.arquivo)}${esc(planilha)}<br>${fmtData(p.inicio)} a ${fmtData(p.fim)} | gerado ${esc(data.gerado_em)}`;
+  $("meta").textContent = `${data.arquivo || ""}${planilha} | ${fmtData(p.inicio)} a ${fmtData(p.fim)} | gerado ${data.gerado_em || ""}`;
   fillSelect("f-data", data.filtros.datas, "Todas as datas");
   fillSelect("f-loja", data.filtros.lojas.filter((l) => !isLojaFora(l)), "Todas as lojas");
   fillSelect("f-forn", (data.filtros.fornecedores || []).filter((f) => !isForn331(f)), "Todos os fornecedores");
