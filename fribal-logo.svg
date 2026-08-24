@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 240" width="520" height="240" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Fribal">
+  <ellipse cx="260" cy="120" rx="246" ry="108" fill="#fff" stroke="#111" stroke-width="4.5"/>
+  <ellipse cx="260" cy="120" rx="236" ry="99" fill="none" stroke="#e31b23" stroke-width="3"/>
+  <ellipse cx="260" cy="120" rx="227" ry="91" fill="none" stroke="#111" stroke-width="3"/>
+  <text x="261.5" y="128" text-anchor="middle" font-family="Arial Black, Arial, Helvetica, sans-serif" font-size="62" font-weight="800" fill="#111">Fribal</text>
+  <text x="260" y="126" text-anchor="middle" font-family="Arial Black, Arial, Helvetica, sans-serif" font-size="62" font-weight="800" fill="#e31b23">Fribal</text>
+  <text x="368" y="92" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#111">®</text>
+  <text x="260" y="156" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700" fill="#111">Especialistas em Carne</text>
+</svg>

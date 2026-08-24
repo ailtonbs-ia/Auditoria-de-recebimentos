@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fribal | Central de Recebimentos de Notas</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo-wrap">
+        <img class="logo" src="fribal-logo.png" alt="Fribal - Especialistas em Carne" />
+      </div>
+      <div>
+        <h1>Central de Recebimentos de Notas</h1>
+        <p>Visao gerencial: onde estao as inconsistencias e como a Central produz</p>
+      </div>
+    </div>
+    <div class="meta" id="meta">Carregando...</div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="central">Produtividade</button>
+    <button class="tab" data-tab="inc">Inconsistencias</button>
+    <button class="tab" data-tab="ops">Operacional</button>
+  </nav>
+
+  <main class="wrap">
+    <div class="filters" id="filters">
+      <input id="q" type="search" placeholder="Buscar NF, chave, produto, pessoa, justificativa..." />
+      <select id="f-data"><option value="">Todas as datas</option></select>
+      <select id="f-loja"><option value="">Todas as lojas</option></select>
+      <select id="f-forn"><option value="">Todos os fornecedores</option></select>
+      <select id="f-tipo"><option value="">Todos os tipos</option></select>
+      <button class="ghost" id="btn-csv" type="button">Exportar CSV</button>
+    </div>
+
+    <section class="kpis" id="kpis"></section>
+    <p class="headline" id="headline"></p>
+
+    <section id="view-central">
+      <div class="board">
+        <article class="card board-wide">
+          <div class="lbl">Top 10 lojas com inconsistencia</div>
+          <p class="hint">Clique na loja para filtrar o painel</p>
+          <div id="top-lojas" class="rank-bars"></div>
+        </article>
+        <article class="card">
+          <div class="lbl">Principais inconsistencias</div>
+          <p class="hint">Tipo de regra que mais dispara</p>
+          <div id="top-tipos" class="rank-bars"></div>
+        </article>
+        <article class="card">
+          <div class="lbl">Fornecedores com mais inconsistencia</div>
+          <p class="hint">Clique no fornecedor para filtrar</p>
+          <div id="top-forn" class="rank-bars"></div>
+        </article>
+      </div>
+      <div class="grid-2">
+        <article class="card">
+          <div class="lbl">Quem trata - Central vs Lojas</div>
+          <div id="split-lanc" class="split-block"></div>
+          <div class="lbl" style="margin-top:16px">Inconsistencias aceitas</div>
+          <div id="split-aceite" class="split-block"></div>
+        </article>
+        <article class="card">
+          <div class="lbl">Equipe da Central</div>
+          <div id="team" class="team-compact"></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="view-inc" class="hidden">
+      <div class="grid-2">
+        <article class="card">
+          <div class="lbl">Entradas x inconsistencias por dia</div>
+          <div class="bars" id="bars-dia"></div>
+        </article>
+        <article class="card">
+          <div class="lbl">Rankings</div>
+          <div class="ranks">
+            <div>
+              <div class="muted">Lojas (NFs inconsistentes)</div>
+              <ul class="rank-list" id="rk-loja"></ul>
+            </div>
+            <div>
+              <div class="muted">Fornecedores</div>
+              <ul class="rank-list" id="rk-forn"></ul>
+            </div>
+            <div>
+              <div class="muted">Produtos</div>
+              <ul class="rank-list" id="rk-prod"></ul>
+            </div>
+            <div>
+              <div class="muted">Justificativas / quem aceitou</div>
+              <ul class="rank-list" id="rk-just"></ul>
+              <ul class="rank-list" id="rk-user"></ul>
+            </div>
+          </div>
+        </article>
+      </div>
+      <div class="muted" id="count-inc" style="margin:0 0 8px"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Loja</th>
+              <th>NF</th>
+              <th>Fornecedor</th>
+              <th>Produto</th>
+              <th>Tipo</th>
+              <th>Aceite</th>
+              <th>Grupo</th>
+              <th>Justificativa</th>
+            </tr>
+          </thead>
+          <tbody id="tb-inc"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="view-ops" class="hidden">
+      <div class="muted" id="count-ops" style="margin:0 0 8px"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Loja</th>
+              <th>NF</th>
+              <th>Fornecedor</th>
+              <th>Tipo</th>
+              <th>Produto / campo</th>
+              <th>De</th>
+              <th>Para</th>
+              <th>Pessoa</th>
+              <th>Grupo</th>
+            </tr>
+          </thead>
+          <tbody id="tb-ops"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <aside class="drawer" id="drawer">
+    <header>
+      <div>
+        <h2 id="d-title">Nota</h2>
+        <p class="muted" id="d-sub"></p>
+      </div>
+      <button class="ghost" id="d-close" type="button">Fechar</button>
+    </header>
+    <div class="body">
+      <ul class="tl" id="d-tl"></ul>
+    </div>
+  </aside>
+
+  <script src="dados.js" charset="utf-8"></script>
+  <script src="app.js" charset="utf-8"></script>
+</body>
+</html>
