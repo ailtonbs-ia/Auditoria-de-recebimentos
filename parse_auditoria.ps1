@@ -209,10 +209,31 @@ function Get-AuditLotes {
   }
   $destFull = $null
   if (Test-Path -LiteralPath $destTxt) { $destFull = [IO.Path]::GetFullPath($destTxt) }
-  Get-ChildItem -LiteralPath $base -Filter "*.txt" | Sort-Object Name | ForEach-Object {
-    $full = $_.FullName
-    if ($destFull -and ([IO.Path]::GetFullPath($full) -eq $destFull)) { return }
-    if (Test-AuditTxt $full) { $list.Add($full) }
+  $pastas = New-Object System.Collections.Generic.List[string]
+  $pastas.Add($base)
+  foreach ($nome in @("Bases", "BASES")) {
+    $pasta = Join-Path $base $nome
+    if (Test-Path -LiteralPath $pasta -PathType Container) {
+      $fullDir = [IO.Path]::GetFullPath($pasta)
+      $jaTem = $false
+      foreach ($p in $pastas) {
+        if ([IO.Path]::GetFullPath($p) -eq $fullDir) { $jaTem = $true; break }
+      }
+      if (-not $jaTem) { $pastas.Add($pasta) }
+    }
+  }
+  $seen = New-Object "System.Collections.Generic.HashSet[string]"
+  foreach ($item in $list) { [void]$seen.Add([IO.Path]::GetFullPath($item)) }
+  foreach ($pasta in $pastas) {
+    Get-ChildItem -LiteralPath $pasta -Filter "*.txt" | Sort-Object Name | ForEach-Object {
+      $full = [IO.Path]::GetFullPath($_.FullName)
+      if ($destFull -and ($full -eq $destFull)) { return }
+      if ($seen.Contains($full)) { return }
+      if (Test-AuditTxt $full) {
+        $list.Add($full)
+        [void]$seen.Add($full)
+      }
+    }
   }
   return $list
 }
@@ -478,7 +499,9 @@ foreach ($item in $inconsistencias) {
   if (-not $userInc.ContainsKey($uNome)) { $userInc[$uNome] = 0 }; $userInc[$uNome]++
   $jk = $(if ($item.justificativa) { $item.justificativa.Trim() } else { "(sem justificativa)" })
   if (-not $jk) { $jk = "(sem justificativa)" }
-  if (-not $justInc.ContainsKey($jk)) { $justInc[$jk] = 0 }; $justInc[$jk]++
+  if ($jk.ToLower() -ne "ok") {
+    if (-not $justInc.ContainsKey($jk)) { $justInc[$jk] = 0 }; $justInc[$jk]++
+  }
   $sk = $(if ($item.status) { $item.status } else { "(sem status)" })
   if (-not $statusInc.ContainsKey($sk)) { $statusInc[$sk] = 0 }; $statusInc[$sk]++
   if ($item.data) { if (-not $diaInc.ContainsKey($item.data)) { $diaInc[$item.data] = 0 }; $diaInc[$item.data]++ }

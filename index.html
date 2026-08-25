@@ -2,19 +2,23 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Fribal | Central de Recebimentos de Notas</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="topbar">
     <div class="brand">
-      <div class="logo-wrap">
+      <button class="logo-wrap" type="button" id="btn-home" title="Voltar para Produtividade">
         <img class="logo" src="fribal-logo.png" alt="Fribal - Especialistas em Carne" />
-      </div>
-      <div>
+      </button>
+      <div class="brand-copy">
         <h1>Central de Recebimentos de Notas</h1>
         <p>Visao gerencial: onde estao as inconsistencias e como a Central produz</p>
+      </div>
+      <div class="today-chip" title="Data de hoje">
+        <small>Hoje</small>
+        <strong id="todayDate"></strong>
       </div>
     </div>
   </header>
@@ -23,6 +27,7 @@
     <button class="tab active" data-tab="central">Produtividade</button>
     <button class="tab" data-tab="inc">Inconsistencias</button>
     <button class="tab" data-tab="ops">Operacional</button>
+    <span class="periodo" id="periodo" hidden></span>
   </nav>
 
   <main class="wrap">
@@ -32,7 +37,7 @@
       <select id="f-loja"><option value="">Todas as lojas</option></select>
       <select id="f-forn"><option value="">Todos os fornecedores</option></select>
       <select id="f-tipo"><option value="">Todos os tipos</option></select>
-      <button class="ghost" id="btn-csv" type="button">Exportar CSV</button>
+      <button class="ghost" id="btn-csv" type="button" title="Base tratada da juncao dos arquivos da pasta Bases">Exportar CSV</button>
     </div>
 
     <section class="kpis" id="kpis"></section>
@@ -71,7 +76,7 @@
     </section>
 
     <section id="view-inc" class="hidden">
-      <div class="grid-2">
+      <div class="grid-2 grid-inc">
         <article class="card">
           <div class="lbl">Entradas x inconsistencias por dia</div>
           <div class="bars" id="bars-dia"></div>
@@ -79,27 +84,27 @@
         <article class="card">
           <div class="lbl">Rankings</div>
           <div class="ranks">
-            <div>
+            <div class="rank-cell">
               <div class="muted">Lojas (NFs inconsistentes)</div>
               <ul class="rank-list" id="rk-loja"></ul>
             </div>
-            <div>
+            <div class="rank-cell">
               <div class="muted">Fornecedores</div>
               <ul class="rank-list" id="rk-forn"></ul>
             </div>
-            <div>
+            <div class="rank-cell">
               <div class="muted">Produtos</div>
               <ul class="rank-list" id="rk-prod"></ul>
             </div>
-            <div>
-              <div class="muted">Justificativas / quem aceitou</div>
+            <div class="rank-cell">
+              <div class="muted">Justificativas</div>
               <ul class="rank-list" id="rk-just"></ul>
-              <ul class="rank-list" id="rk-user"></ul>
             </div>
           </div>
         </article>
       </div>
-      <div class="muted" id="count-inc" style="margin:0 0 8px"></div>
+      <div class="muted count-line" id="count-inc"></div>
+      <p class="table-hint">Em telas estreitas a lista vira cartoes. No tablet, deslize a tabela na horizontal.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -121,7 +126,8 @@
     </section>
 
     <section id="view-ops" class="hidden">
-      <div class="muted" id="count-ops" style="margin:0 0 8px"></div>
+      <div class="muted count-line" id="count-ops"></div>
+      <p class="table-hint">Em telas estreitas a lista vira cartoes. No tablet, deslize a tabela na horizontal.</p>
       <div class="table-wrap">
         <table>
           <thead>
@@ -144,6 +150,7 @@
     </section>
   </main>
 
+  <div class="drawer-scrim" id="drawer-scrim" hidden></div>
   <aside class="drawer" id="drawer">
     <header>
       <div>

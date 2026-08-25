@@ -225,17 +225,37 @@ def row_melhor(atual: list[str], novo: list[str]) -> bool:
     return bool(ch_novo) and not ch_atual
 
 
+def pastas_lotes() -> list[Path]:
+    dirs = [BASE]
+    seen = {BASE.resolve()}
+    for name in ("Bases", "BASES"):
+        pasta = BASE / name
+        if pasta.is_dir():
+            res = pasta.resolve()
+            if res not in seen:
+                seen.add(res)
+                dirs.append(pasta)
+    return dirs
+
+
 def listar_lotes_auditoria() -> list[Path]:
     dest = TXT_CANDIDATES[0]
     dest_res = dest.resolve() if dest.exists() else None
     lotes: list[Path] = []
+    seen: set[Path] = set()
     if dest.exists() and is_audit_txt(dest):
         lotes.append(dest)
-    for path in sorted(BASE.glob("*.txt"), key=lambda p: p.name.lower()):
-        if dest_res and path.resolve() == dest_res:
-            continue
-        if is_audit_txt(path):
-            lotes.append(path)
+        seen.add(dest.resolve())
+    for pasta in pastas_lotes():
+        for path in sorted(pasta.glob("*.txt"), key=lambda p: p.name.lower()):
+            res = path.resolve()
+            if dest_res and res == dest_res:
+                continue
+            if res in seen:
+                continue
+            if is_audit_txt(path):
+                lotes.append(path)
+                seen.add(res)
     return lotes
 
 
@@ -799,7 +819,9 @@ def parse(path: Path) -> dict:
         forn_inc[item["fornecedor"]] += 1
         prod_inc[item["produto"] or item["produto_codigo"] or "sem produto"] += 1
         user_inc[item.get("aceite_nome") or item["aceite_usuario"] or item["usuario"]] += 1
-        just_inc[(item["justificativa"] or "(sem justificativa)").strip() or "(sem justificativa)"] += 1
+        just = (item["justificativa"] or "").strip()
+        if just.lower() != "ok":
+            just_inc[just or "(sem justificativa)"] += 1
         status_inc[item["status"] or "(sem status)"] += 1
         if item["data"]:
             dia_inc[item["data"]] += 1

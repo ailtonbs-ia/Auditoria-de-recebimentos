@@ -8,17 +8,79 @@ const TIPO_LABEL = {
   exclusao_nf: "Exclusao de NF",
   exclusao_produto: "Exclusao de produto",
   alteracao_fiscal: "Alteracao fiscal",
+  inclusao_nf: "Inclusao de NF",
 };
 
 const $ = (id) => document.getElementById(id);
 const dash = "-";
 const fmt = (n) => (n == null || n === "" ? dash : Number(n).toLocaleString("pt-BR"));
 const fmtPct = (n) => (n == null ? dash : `${Number(n).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`);
+
+function clamp(n, a, b) {
+  return Math.max(a, Math.min(b, n));
+}
+
+function mixRgb(from, to, t) {
+  const p = clamp(t, 0, 1);
+  return from.map((c, i) => Math.round(c + (to[i] - c) * p));
+}
+
+function metaColor(pct, meta) {
+  const p = clamp((Number(pct) || 0) / (meta || 100), 0, 1);
+  const red = [227, 27, 35];
+  const yellow = [230, 184, 77];
+  const green = [61, 207, 142];
+  const rgb = p < 0.5 ? mixRgb(red, yellow, p / 0.5) : mixRgb(yellow, green, (p - 0.5) / 0.5);
+  return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+}
+
+function metaTone(pct, meta) {
+  const p = clamp((Number(pct) || 0) / (meta || 100), 0, 1);
+  if (p >= 0.7) return "good";
+  if (p >= 0.4) return "warn";
+  return "bad";
+}
+
+function metaColorDown(pct, redAt) {
+  const p = clamp((Number(pct) || 0) / (redAt || 100), 0, 1);
+  return metaColor((1 - p) * 100, 100);
+}
+
+function metaToneDown(pct, redAt) {
+  const p = clamp((Number(pct) || 0) / (redAt || 100), 0, 1);
+  return metaTone((1 - p) * 100, 100);
+}
 const fmtData = (d) => {
   if (!d) return dash;
   const [y, m, day] = d.split("-");
   return y && m && day ? `${day}/${m}/${y}` : d;
 };
+
+function todayLabel() {
+  const raw = new Date().toLocaleDateString("pt-BR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+function setTodayDate() {
+  const el = $("todayDate");
+  if (el) el.textContent = todayLabel();
+}
+
+function fmtPeriodo(inicio, fim) {
+  const a = String(inicio || "").split("-");
+  const b = String(fim || "").split("-");
+  if (a.length < 3 && b.length < 3) return "";
+  if (a.length < 3) return `Dados de ${fmtData(fim)}`;
+  if (b.length < 3) return `Dados de ${fmtData(inicio)}`;
+  if (inicio === fim) return `Dados de ${fmtData(fim)}`;
+  if (a[0] === b[0]) return `Dados de ${a[2]}/${a[1]} a ${b[2]}/${b[1]}/${b[0]}`;
+  return `Dados de ${fmtData(inicio)} a ${fmtData(fim)}`;
+}
 
 let DATA = null;
 let TAB = "central";
@@ -413,13 +475,19 @@ function renderKpis() {
     const topLoja = x.lojas[0];
     const topForn = x.fornecedores[0];
     const tipoPct = topTipo && x.inc.length ? (topTipo.itens / x.inc.length) * 100 : 0;
+    const corTaxa = metaColorDown(taxa, 100);
+    const tomTaxa = metaToneDown(taxa, 100);
+    const totVol = s.lancCentral + s.lancLojas;
+    const pctVol = totVol ? (s.lancCentral / totVol) * 100 : 0;
+    const corVol = metaColor(pctVol, 100);
+    const tomVol = metaTone(pctVol, 100);
     $("kpis").innerHTML = `
       <article class="card"><div class="lbl">NFs no periodo</div><div class="val">${fmt(x.lanc.length)}</div><div class="sub">lote ${fmt(t.nfs_entrada)}</div></article>
       <article class="card warn"><div class="lbl">NFs inconsistentes</div><div class="val">${fmt(x.nfsInc)}</div><div class="sub">${fmt(x.inc.length)} itens</div></article>
-      <article class="card bad"><div class="lbl">Taxa de inconsistencia</div><div class="val">${fmtPct(taxa)}</div><div class="sub">lote ${fmtPct(t.taxa_nfs)}</div></article>
-      <article class="card"><div class="lbl">Tipo dominante</div><div class="val-text" title="${esc(topTipo ? TIPO_LABEL[topTipo.nome] || topTipo.nome : dash)}">${esc(topTipo ? TIPO_LABEL[topTipo.nome] || topTipo.nome : dash)}</div><div class="sub">${topTipo ? fmtPct(tipoPct) + " dos itens" : ""}</div></article>
+      <article class="card ${tomTaxa}"><div class="lbl">Taxa de inconsistencia</div><div class="val" style="color:${corTaxa}">${fmtPct(taxa)}</div><div class="sub">lote ${fmtPct(t.taxa_nfs)} · meta 0%</div></article>
+      <article class="card"><div class="lbl">Inconsistencia dominante</div><div class="val-text" title="${esc(topTipo ? TIPO_LABEL[topTipo.nome] || topTipo.nome : dash)}">${esc(topTipo ? TIPO_LABEL[topTipo.nome] || topTipo.nome : dash)}</div><div class="sub">${topTipo ? fmtPct(tipoPct) + " dos itens" : ""}</div></article>
       <article class="card"><div class="lbl">Loja critica</div><div class="val-text" title="${esc(topLoja ? topLoja.nome : dash)}">${esc(topLoja ? topLoja.nome : dash)}</div><div class="sub">${topLoja ? fmt(topLoja.nfs) + " NFs | " + fmtPct(topLoja.taxa) : ""}</div></article>
-      <article class="card good"><div class="lbl">Central no volume</div><div class="val">${fmtPct(s.lancCentral + s.lancLojas ? (s.lancCentral / (s.lancCentral + s.lancLojas)) * 100 : 0)}</div><div class="sub">${fmt(s.lancCentral)} NFs lancadas</div></article>
+      <article class="card ${tomVol}"><div class="lbl">Central no volume</div><div class="val" style="color:${corVol}">${fmtPct(pctVol)}</div><div class="sub">${fmt(s.lancCentral)} NFs lancadas · meta 100%</div></article>
     `;
     if (x.inc.length && topTipo && topLoja) {
       headline.className = "headline";
@@ -525,21 +593,21 @@ function renderCentral() {
 function renderIncTable(rows) {
   $("count-inc").textContent = `${rows.length} inconsistencia(s) - clique na linha para a linha do tempo da NF`;
   if (!rows.length) {
-    $("tb-inc").innerHTML = `<tr><td colspan="9" class="muted">Nenhum registro com os filtros atuais.</td></tr>`;
+    $("tb-inc").innerHTML = `<tr class="empty"><td colspan="9" class="muted">Nenhum registro com os filtros atuais.</td></tr>`;
     return;
   }
   $("tb-inc").innerHTML = rows
     .map(
       (i) => `<tr class="clickable" data-nf="${esc(i.nf_id)}">
-        <td class="num">${fmtData(i.data)} ${esc(i.hora || "")}</td>
-        <td>${esc(i.loja)}</td>
-        <td class="num">${esc(i.numeronf)}/${esc(i.serienf)}</td>
-        <td>${esc(i.fornecedor)}</td>
-        <td>${esc(i.produto || i.produto_codigo || dash)}</td>
-        <td>${badge(i.tipo)}</td>
-        <td>${esc(i.aceite_nome || userLabel(i.aceite_usuario || i.usuario))}</td>
-        <td>${esc(grupoLabel(i.aceite_usuario, i.aceite_grupo))}</td>
-        <td>${esc(i.justificativa || dash)}</td>
+        <td class="num" data-label="Data">${fmtData(i.data)} ${esc(i.hora || "")}</td>
+        <td data-label="Loja">${esc(i.loja)}</td>
+        <td class="num" data-label="NF">${esc(i.numeronf)}/${esc(i.serienf)}</td>
+        <td data-label="Fornecedor">${esc(i.fornecedor)}</td>
+        <td data-label="Produto">${esc(i.produto || i.produto_codigo || dash)}</td>
+        <td data-label="Tipo">${badge(i.tipo)}</td>
+        <td data-label="Aceite">${esc(i.aceite_nome || userLabel(i.aceite_usuario || i.usuario))}</td>
+        <td data-label="Grupo">${esc(grupoLabel(i.aceite_usuario, i.aceite_grupo))}</td>
+        <td data-label="Justificativa">${esc(i.justificativa || dash)}</td>
       </tr>`
     )
     .join("");
@@ -548,23 +616,23 @@ function renderIncTable(rows) {
 function renderOpsTable(rows) {
   $("count-ops").textContent = `${rows.length} evento(s) operacional(is) - exclusao de NF/item`;
   if (!rows.length) {
-    $("tb-ops").innerHTML = `<tr><td colspan="10" class="muted">Nenhum registro com os filtros atuais.</td></tr>`;
+    $("tb-ops").innerHTML = `<tr class="empty"><td colspan="10" class="muted">Nenhum registro com os filtros atuais.</td></tr>`;
     return;
   }
   $("tb-ops").innerHTML = rows
     .slice(0, 1500)
     .map(
       (i) => `<tr class="clickable" data-nf="${esc(i.seqaux)}|${esc(i.chave)}">
-        <td class="num">${fmtData(i.data)} ${esc(i.hora || "")}</td>
-        <td>${esc(i.loja)}</td>
-        <td class="num">${esc(i.numeronf)}/${esc(i.serienf)}</td>
-        <td>${esc(i.fornecedor)}</td>
-        <td>${badge(i.tipo)}</td>
-        <td class="msg">${esc(i.produto || i.campo || dash)}${i.produto && i.campo ? "<br>" + esc(i.campo) : ""}</td>
-        <td class="num">${esc(i.valor_antigo || dash)}</td>
-        <td class="num">${esc(i.valor_novo || dash)}</td>
-        <td>${esc(i.usuario_nome || userLabel(i.usuario))}</td>
-        <td>${esc(grupoLabel(i.usuario, i.usuario_grupo))}</td>
+        <td class="num" data-label="Data">${fmtData(i.data)} ${esc(i.hora || "")}</td>
+        <td data-label="Loja">${esc(i.loja)}</td>
+        <td class="num" data-label="NF">${esc(i.numeronf)}/${esc(i.serienf)}</td>
+        <td data-label="Fornecedor">${esc(i.fornecedor)}</td>
+        <td data-label="Tipo">${badge(i.tipo)}</td>
+        <td class="msg" data-label="Produto / campo">${esc(i.produto || i.campo || dash)}${i.produto && i.campo ? "<br>" + esc(i.campo) : ""}</td>
+        <td class="num" data-label="De">${esc(i.valor_antigo || dash)}</td>
+        <td class="num" data-label="Para">${esc(i.valor_novo || dash)}</td>
+        <td data-label="Pessoa">${esc(i.usuario_nome || userLabel(i.usuario))}</td>
+        <td data-label="Grupo">${esc(grupoLabel(i.usuario, i.usuario_grupo))}</td>
       </tr>`
     )
     .join("");
@@ -610,6 +678,9 @@ function openDrawer(nfId) {
         .join("")
     : "<li class='muted'>Sem linha do tempo para esta nota.</li>";
   $("drawer").classList.add("open");
+  document.body.classList.add("drawer-open");
+  const scrim = $("drawer-scrim");
+  if (scrim) scrim.hidden = false;
 }
 
 function csvEscape(v) {
@@ -617,33 +688,91 @@ function csvEscape(v) {
   return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+function treatedRow(fonte, r, extra) {
+  const u = r.usuario;
+  const ace = r.aceite_usuario;
+  return Object.assign(
+    {
+      fonte,
+      data: r.data || "",
+      hora: r.hora || "",
+      loja: r.loja || "",
+      nroempresa: r.nroempresa || "",
+      numeronf: r.numeronf || "",
+      serienf: r.serienf || "",
+      fornecedor: r.fornecedor || "",
+      produto: r.produto || r.produto_codigo || "",
+      tipo: TIPO_LABEL[r.tipo] || r.tipo || "",
+      detalhe: r.mensagem || r.campo || "",
+      valor_antigo: r.valor_antigo || "",
+      valor_novo: r.valor_novo || "",
+      usuario: u || "",
+      usuario_nome: r.usuario_nome || userLabel(u),
+      usuario_grupo: r.usuario_grupo || grupoLabel(u),
+      aceite_usuario: ace || "",
+      aceite_nome: r.aceite_nome || (ace ? userLabel(ace) : ""),
+      aceite_grupo: r.aceite_grupo || (ace ? grupoLabel(ace, r.aceite_grupo) : ""),
+      justificativa: r.justificativa || "",
+      status: r.status || "",
+      chave: r.chave || "",
+      seqaux: r.seqaux || "",
+      iso: r.iso || "",
+    },
+    extra || {}
+  );
+}
+
+function treatedBaseRows() {
+  const rows = [];
+  (DATA.lancamentos || []).forEach((r) => {
+    rows.push(
+      treatedRow("lancamento", r, {
+        produto: "",
+        tipo: TIPO_LABEL.inclusao_nf,
+        detalhe: "Inclusao da nota",
+        aceite_usuario: "",
+        aceite_nome: "",
+        aceite_grupo: "",
+        justificativa: "",
+        status: "",
+      })
+    );
+  });
+  (DATA.inconsistencias || []).forEach((r) => rows.push(treatedRow("inconsistencia", r)));
+  (DATA.operacional || []).forEach((r) => rows.push(treatedRow("operacional", r)));
+  rows.sort((a, b) => String(b.iso).localeCompare(String(a.iso)) || String(a.loja).localeCompare(String(b.loja)) || String(a.numeronf).localeCompare(String(b.numeronf)));
+  return rows;
+}
+
 function exportCsv() {
-  let rows;
-  let headers;
-  let name;
-  if (TAB === "central") {
-    const s = teamStats();
-    rows = s.membros.map((m) => ({
-      codigo: m.codigo,
-      nome: m.nome,
-      grupo: m.grupo,
-      nfs_lancadas: m.nfs_lancadas,
-      nfs_inconsistentes_aceitas: m.nfs_aceitas.size,
-      itens_aceitos: m.itens_aceitos,
-      exclusoes_nf: m.exclusoes_nf,
-      exclusoes_produto: m.exclusoes_produto,
-    }));
-    headers = ["codigo", "nome", "grupo", "nfs_lancadas", "nfs_inconsistentes_aceitas", "itens_aceitos", "exclusoes_nf", "exclusoes_produto"];
-    name = "produtividade-central.csv";
-  } else if (TAB === "inc") {
-    rows = filteredInc();
-    headers = ["data", "hora", "loja", "numeronf", "serienf", "fornecedor", "produto", "tipo", "aceite_nome", "aceite_grupo", "aceite_usuario", "justificativa", "chave"];
-    name = "inconsistencias-nf.csv";
-  } else {
-    rows = filteredOps();
-    headers = ["data", "hora", "loja", "numeronf", "serienf", "fornecedor", "tipo", "produto", "campo", "valor_antigo", "valor_novo", "usuario_nome", "usuario_grupo", "usuario", "chave"];
-    name = "eventos-operacionais-nf.csv";
-  }
+  const headers = [
+    "fonte",
+    "data",
+    "hora",
+    "loja",
+    "nroempresa",
+    "numeronf",
+    "serienf",
+    "fornecedor",
+    "produto",
+    "tipo",
+    "detalhe",
+    "valor_antigo",
+    "valor_novo",
+    "usuario",
+    "usuario_nome",
+    "usuario_grupo",
+    "aceite_usuario",
+    "aceite_nome",
+    "aceite_grupo",
+    "justificativa",
+    "status",
+    "chave",
+    "seqaux",
+  ];
+  const rows = treatedBaseRows();
+  const p = (DATA && DATA.periodo) || {};
+  const name = p.inicio && p.fim ? `base-tratada-recebimentos-${p.inicio}-a-${p.fim}.csv` : "base-tratada-recebimentos.csv";
   const lines = [headers.join(";")].concat(rows.map((r) => headers.map((h) => csvEscape(r[h])).join(";")));
   const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a");
@@ -665,6 +794,12 @@ function setTab(tab) {
   render();
 }
 
+function goHome() {
+  closeDrawer();
+  if (!DATA) return;
+  setTab("central");
+}
+
 function render() {
   if (!DATA) return;
   renderKpis();
@@ -673,11 +808,26 @@ function render() {
   renderOpsTable(filteredOps());
 }
 
+function closeDrawer() {
+  $("drawer").classList.remove("open");
+  document.body.classList.remove("drawer-open");
+  const scrim = $("drawer-scrim");
+  if (scrim) scrim.hidden = true;
+}
+
 function bind() {
+  setTodayDate();
   ["q", "f-data", "f-loja", "f-forn", "f-tipo"].forEach((id) => $(id).addEventListener("input", render));
   $("btn-csv").addEventListener("click", exportCsv);
+  const home = $("btn-home");
+  if (home) home.addEventListener("click", goHome);
   document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
-  $("d-close").addEventListener("click", () => $("drawer").classList.remove("open"));
+  $("d-close").addEventListener("click", closeDrawer);
+  const scrim = $("drawer-scrim");
+  if (scrim) scrim.addEventListener("click", closeDrawer);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeDrawer();
+  });
   document.body.addEventListener("click", (ev) => {
     const btn = ev.target.closest("[data-filter-key]");
     if (btn) {
@@ -702,15 +852,22 @@ function boot(data) {
   const p = data.periodo || {};
   const planilha = data.usuarios_arquivo ? ` | ${data.usuarios_arquivo}` : "";
   $("meta").textContent = `${data.arquivo || ""}${planilha} | ${fmtData(p.inicio)} a ${fmtData(p.fim)} | gerado ${data.gerado_em || ""}`;
-  fillSelect("f-data", data.filtros.datas, "Todas as datas");
+  const periodoEl = $("periodo");
+  const periodoTxt = fmtPeriodo(p.inicio, p.fim);
+  if (periodoEl) {
+    periodoEl.hidden = !periodoTxt;
+    periodoEl.textContent = periodoTxt;
+  }
+  const datas = data.filtros.datas || [];
+  const dataLabels = Object.fromEntries(datas.map((d) => [d, fmtData(d)]));
+  fillSelect("f-data", datas, "Todas as datas", dataLabels);
   fillSelect("f-loja", data.filtros.lojas.filter((l) => !isLojaFora(l)), "Todas as lojas");
   fillSelect("f-forn", (data.filtros.fornecedores || []).filter((f) => !isForn331(f)), "Todos os fornecedores");
   fillSelect("f-tipo", data.filtros.tipos, "Todos os tipos", TIPO_LABEL);
   renderRank("rk-loja", (data.rankings.lojas || []).filter((it) => !isLojaFora(it.nome)), (it) => `${it.nfs_inconsistentes} NF${it.taxa != null ? " | " + it.taxa + "%" : ""}`);
   renderRank("rk-forn", (data.rankings.fornecedores || []).filter((it) => !isForn331(it.nome)), (it) => fmt(it.qtd));
   renderRank("rk-prod", data.rankings.produtos, (it) => fmt(it.qtd));
-  renderRank("rk-just", data.rankings.justificativas, (it) => fmt(it.qtd));
-  renderRank("rk-user", data.rankings.usuarios, (it) => fmt(it.qtd));
+  renderRank("rk-just", (data.rankings.justificativas || []).filter((it) => String(it.nome || "").trim().toLowerCase() !== "ok"), (it) => fmt(it.qtd));
   renderBars();
   render();
 }
