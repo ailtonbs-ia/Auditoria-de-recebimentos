@@ -7,6 +7,22 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <svg class="fluxo-sprite" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-xml" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></symbol>
+    <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3H10l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 2 2 20h20L12 2z"/><path d="M12 9v5M12 17h.01"/></symbol>
+    <symbol id="i-scan" viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/><path d="M12 8v8"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24"><path d="M12 2H3v9l9.7 9.7a2 2 0 0 0 2.8 0l6.2-6.2a2 2 0 0 0 0-2.8L12 2z"/><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-cost" viewBox="0 0 24 24"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></symbol>
+    <symbol id="i-tax" viewBox="0 0 24 24"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/><path d="M4 11h16"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></symbol>
+    <symbol id="i-truck" viewBox="0 0 24 24"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11h2"/><path d="M15 18h4l3-5V9h-7v9z"/><circle cx="7.5" cy="18.5" r="2.5"/><circle cx="17.5" cy="18.5" r="2.5"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M3 9h13a5 5 0 0 1 0 10H9"/><path d="M7 5 3 9l4 4"/></symbol>
+    <symbol id="i-store" viewBox="0 0 24 24"><path d="M3 9 5 3h14l2 6"/><path d="M3 9v11h18V9"/><path d="M9 22V12h6v10"/></symbol>
+    <symbol id="i-bank" viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M3 10h18"/><path d="M5 6l7-4 7 4"/><path d="M4 10v11M8 10v11M12 10v11M16 10v11M20 10v11"/></symbol>
+    <symbol id="i-flag" viewBox="0 0 24 24"><path d="M4 22V4"/><path d="M4 4s2-1 6 1 8-2 8-2v10s-4 3-8 1-6 2-6 2z"/></symbol>
+  </svg>
   <header class="topbar">
     <div class="brand">
       <button class="logo-wrap" type="button" id="btn-home" title="Voltar para Produtividade">
@@ -27,6 +43,7 @@
     <button class="tab active" data-tab="central">Produtividade</button>
     <button class="tab" data-tab="inc">Inconsistencias</button>
     <button class="tab" data-tab="ops">Operacional</button>
+    <button class="tab" data-tab="fluxo">Fluxo</button>
     <span class="periodo" id="periodo" hidden></span>
   </nav>
 
@@ -146,6 +163,158 @@
           </thead>
           <tbody id="tb-ops"></tbody>
         </table>
+      </div>
+    </section>
+
+    <section id="view-fluxo" class="hidden">
+      <div class="fluxo-head">
+        <div>
+          <div class="lbl">Mapa operacional</div>
+          <h2>Fluxo Central de Recebimentos de Notas Fribal</h2>
+          <p class="hint">Do XML do fornecedor ao financeiro, com tratativas e conferencia nas lojas.</p>
+        </div>
+        <div class="fluxo-toolbar">
+          <button type="button" class="ghost fluxo-mode is-on" data-fluxo-mode="ok">Sem inconsistencia</button>
+          <button type="button" class="ghost fluxo-mode" data-fluxo-mode="inc">Com inconsistencia</button>
+        </div>
+      </div>
+      <p class="fluxo-now" id="fluxo-now">A nota inicia a jornada.</p>
+
+      <div class="fluxo-board" id="fluxo-board">
+        <div class="fluxo-lane-bg bg-origem"></div>
+        <div class="fluxo-lane-bg bg-trat"></div>
+        <div class="fluxo-lane-bg bg-central"></div>
+        <div class="fluxo-lane-bg bg-loja"></div>
+
+        <div class="fluxo-lane-title t-origem">Origem</div>
+        <div class="fluxo-lane-title t-trat">Tratativas</div>
+        <div class="fluxo-lane-title t-central">Central de Recebimentos</div>
+        <div class="fluxo-lane-title t-loja">Lojas</div>
+
+        <div class="fluxo-col col-origem">
+          <article class="fnode pill" data-step="inicio">
+            <svg class="fico"><use href="#i-play"></use></svg>
+            <span>INÍCIO</span>
+          </article>
+          <article class="fnode oval" data-step="xml">
+            <svg class="fico"><use href="#i-xml"></use></svg>
+            <div>
+              <strong>Fornecedor envia XML</strong>
+              <small>Origem da NF-e</small>
+            </div>
+          </article>
+        </div>
+
+        <div class="fluxo-col col-trat">
+          <div class="fstack" data-step="tratativas">
+            <article class="fnode" data-step="cadastro">
+              <svg class="fico"><use href="#i-tag"></use></svg>
+              <div>
+                <strong>Cadastro de produto</strong>
+                <small>Comercial</small>
+              </div>
+            </article>
+            <article class="fnode" data-step="custo">
+              <svg class="fico"><use href="#i-cost"></use></svg>
+              <div>
+                <strong>Custo de mercadoria</strong>
+                <small>Controller</small>
+              </div>
+            </article>
+            <article class="fnode" data-step="fiscal">
+              <svg class="fico"><use href="#i-tax"></use></svg>
+              <div>
+                <strong>CFOP, CGO, impostos</strong>
+                <small>Fiscal / Contábil</small>
+              </div>
+            </article>
+          </div>
+          <article class="fnode" data-step="tratada">
+            <svg class="fico"><use href="#i-check"></use></svg>
+            <div>
+              <strong>Inconsistência tratada</strong>
+              <small>Retorna para validação</small>
+            </div>
+          </article>
+        </div>
+
+        <div class="fluxo-col col-central">
+          <article class="fnode" data-step="pre">
+            <svg class="fico"><use href="#i-inbox"></use></svg>
+            <div>
+              <strong>Pré-entrada</strong>
+              <small>Central recebe a nota</small>
+            </div>
+          </article>
+          <article class="fnode diamond" data-step="dec-c">
+            <div class="diamond-inner">
+              <svg class="fico"><use href="#i-alert"></use></svg>
+              <strong>Inconsistência?</strong>
+            </div>
+          </article>
+          <article class="fnode" data-step="validar">
+            <svg class="fico"><use href="#i-scan"></use></svg>
+            <div>
+              <strong>Validar informações e gerar carga</strong>
+              <small>Libera para as lojas</small>
+            </div>
+          </article>
+          <article class="fnode oval end" data-step="fechar">
+            <svg class="fico"><use href="#i-bank"></use></svg>
+            <div>
+              <strong>Fechar carga e gerar financeiro</strong>
+              <small>Encerramento na Central</small>
+            </div>
+          </article>
+          <article class="fnode pill fim" data-step="fim">
+            <svg class="fico"><use href="#i-flag"></use></svg>
+            <span>FIM</span>
+          </article>
+        </div>
+
+        <div class="fluxo-col col-loja">
+          <article class="fnode" data-step="conf">
+            <svg class="fico"><use href="#i-truck"></use></svg>
+            <div>
+              <strong>Conferência de carga</strong>
+              <small>Recebimento fisico na loja</small>
+            </div>
+          </article>
+          <article class="fnode diamond" data-step="dec-l">
+            <div class="diamond-inner">
+              <svg class="fico"><use href="#i-alert"></use></svg>
+              <strong>Inconsistência?</strong>
+            </div>
+          </article>
+          <article class="fnode" data-step="devolucao">
+            <svg class="fico"><use href="#i-undo"></use></svg>
+            <div>
+              <strong>Emitir devolução / tratar inconsistência</strong>
+              <small>Caminho SIM na loja</small>
+            </div>
+          </article>
+          <article class="fnode" data-step="finalizar">
+            <svg class="fico"><use href="#i-store"></use></svg>
+            <div>
+              <strong>Finalizar carga</strong>
+              <small>Loja devolve a Central</small>
+            </div>
+          </article>
+        </div>
+
+        <svg class="fluxo-wires" id="fluxo-wires" aria-hidden="true">
+          <defs>
+            <marker id="fluxo-arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="5.5" markerHeight="5.5" markerUnits="userSpaceOnUse" orient="auto">
+              <path d="M 0 1.2 L 10 5 L 0 8.8 z"></path>
+            </marker>
+            <filter id="fluxo-glow" x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur stdDeviation="2.4" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+          <g id="fluxo-paths"></g>
+          <circle id="fluxo-token" r="5"></circle>
+        </svg>
       </div>
     </section>
   </main>

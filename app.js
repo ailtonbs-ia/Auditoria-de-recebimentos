@@ -82,6 +82,22 @@ function fmtPeriodo(inicio, fim) {
   return `Dados de ${fmtData(inicio)} a ${fmtData(fim)}`;
 }
 
+function fmtDateTime(iso) {
+  const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return "";
+  return `${m[3]}/${m[2]}/${m[1]} as ${m[4]}:${m[5]}`;
+}
+
+function metaLabel(data) {
+  const p = (data && data.periodo) || {};
+  const parts = [];
+  if (p.inicio && p.fim && p.inicio !== p.fim) parts.push(`Periodo ${fmtData(p.inicio)} a ${fmtData(p.fim)}`);
+  else if (p.inicio || p.fim) parts.push(`Periodo ${fmtData(p.inicio || p.fim)}`);
+  const when = fmtDateTime(data && data.gerado_em);
+  if (when) parts.push(`Atualizado em ${when}`);
+  return parts.join("  ·  ") || "Central de Recebimentos";
+}
+
 let DATA = null;
 let TAB = "central";
 
@@ -483,11 +499,11 @@ function renderKpis() {
     const tomVol = metaTone(pctVol, 100);
     $("kpis").innerHTML = `
       <article class="card"><div class="lbl">NFs no periodo</div><div class="val">${fmt(x.lanc.length)}</div><div class="sub">lote ${fmt(t.nfs_entrada)}</div></article>
-      <article class="card warn"><div class="lbl">NFs inconsistentes</div><div class="val">${fmt(x.nfsInc)}</div><div class="sub">${fmt(x.inc.length)} itens</div></article>
+      <article class="card ${tomVol}"><div class="lbl">Central no volume</div><div class="val" style="color:${corVol}">${fmtPct(pctVol)}</div><div class="sub">${fmt(s.lancCentral)} NFs lancadas · meta 100%</div></article>
       <article class="card ${tomTaxa}"><div class="lbl">Taxa de inconsistencia</div><div class="val" style="color:${corTaxa}">${fmtPct(taxa)}</div><div class="sub">lote ${fmtPct(t.taxa_nfs)} · meta 0%</div></article>
       <article class="card"><div class="lbl">Inconsistencia dominante</div><div class="val-text" title="${esc(topTipo ? TIPO_LABEL[topTipo.nome] || topTipo.nome : dash)}">${esc(topTipo ? TIPO_LABEL[topTipo.nome] || topTipo.nome : dash)}</div><div class="sub">${topTipo ? fmtPct(tipoPct) + " dos itens" : ""}</div></article>
       <article class="card"><div class="lbl">Loja critica</div><div class="val-text" title="${esc(topLoja ? topLoja.nome : dash)}">${esc(topLoja ? topLoja.nome : dash)}</div><div class="sub">${topLoja ? fmt(topLoja.nfs) + " NFs | " + fmtPct(topLoja.taxa) : ""}</div></article>
-      <article class="card ${tomVol}"><div class="lbl">Central no volume</div><div class="val" style="color:${corVol}">${fmtPct(pctVol)}</div><div class="sub">${fmt(s.lancCentral)} NFs lancadas · meta 100%</div></article>
+      <article class="card warn"><div class="lbl">NFs inconsistentes</div><div class="val">${fmt(x.nfsInc)}</div><div class="sub">${fmt(x.inc.length)} itens</div></article>
     `;
     if (x.inc.length && topTipo && topLoja) {
       headline.className = "headline";
@@ -782,12 +798,256 @@ function exportCsv() {
   URL.revokeObjectURL(a.href);
 }
 
+const FLUXO_COPY = {
+  inicio: "INICIO — a jornada da nota comeca.",
+  xml: "Fornecedor envia o XML da NF-e para a Central.",
+  pre: "A Central faz a pre-entrada da nota.",
+  "dec-c": "A Central pergunta: ha inconsistencia?",
+  cadastro: "Tratativa comercial: cadastro de produto.",
+  custo: "Tratativa do controller: custo de mercadoria.",
+  fiscal: "Tratativa fiscal/contabil: CFOP, CGO e impostos.",
+  tratada: "Inconsistencia tratada. A nota volta para validacao.",
+  validar: "Validar informacoes e gerar carga para as lojas.",
+  conf: "A loja faz a conferencia de carga.",
+  "dec-l": "A loja pergunta: ha inconsistencia?",
+  devolucao: "Emitir devolucao ou tratar a inconsistencia na loja.",
+  finalizar: "A loja finaliza a carga e devolve o processo.",
+  fechar: "A Central fecha a carga e gera o financeiro.",
+  fim: "FIM — processo encerrado.",
+};
+
+const FLUXO_STEPS = {
+  ok: ["inicio", "xml", "pre", "dec-c", "validar", "conf", "dec-l", "finalizar", "fechar", "fim"],
+  inc: ["inicio", "xml", "pre", "dec-c", "cadastro", "custo", "fiscal", "tratada", "validar", "conf", "dec-l", "devolucao", "finalizar", "fechar", "fim"],
+};
+
+const FLUXO_EDGES = {
+  ok: ["inicio-xml", "xml-pre", "pre-dec-c", "dec-c-ok", "val-conf", "conf-dec-l", "dec-l-ok", "fin-fech", "fech-fim"],
+  inc: ["inicio-xml", "xml-pre", "pre-dec-c", "dec-c-trat", "cad-custo", "custo-fis", "fis-tratada", "tratada-val", "val-conf", "conf-dec-l", "dec-l-dev", "dev-fin", "fin-fech", "fech-fim"],
+};
+
+const FLUXO_WIRES = [
+  { id: "inicio-xml", from: "inicio", to: "xml", a: "bottom", b: "top", lane: "origem" },
+  { id: "xml-pre", from: "xml", to: "pre", a: "right", b: "left", lane: "central" },
+  { id: "pre-dec-c", from: "pre", to: "dec-c", a: "bottom", b: "top", lane: "central" },
+  { id: "dec-c-trat", from: "dec-c", to: "cadastro", a: "left", b: "right", lane: "trat", tag: "SIM" },
+  { id: "dec-c-ok", from: "dec-c", to: "validar", a: "bottom", b: "top", lane: "central", tag: "NAO" },
+  { id: "cad-custo", from: "cadastro", to: "custo", a: "bottom", b: "top", lane: "trat" },
+  { id: "custo-fis", from: "custo", to: "fiscal", a: "bottom", b: "top", lane: "trat" },
+  { id: "fis-tratada", from: "fiscal", to: "tratada", a: "bottom", b: "top", lane: "trat" },
+  { id: "tratada-val", from: "tratada", to: "validar", a: "right", b: "left", lane: "central" },
+  { id: "val-conf", from: "validar", to: "conf", a: "right", b: "left", lane: "loja" },
+  { id: "conf-dec-l", from: "conf", to: "dec-l", a: "bottom", b: "top", lane: "loja" },
+  { id: "dec-l-dev", from: "dec-l", to: "devolucao", a: "bottom", b: "top", lane: "loja", tag: "SIM" },
+  { id: "dec-l-ok", from: "dec-l", to: "finalizar", a: "right", b: "right", lane: "loja", tag: "NAO", bypass: true },
+  { id: "dev-fin", from: "devolucao", to: "finalizar", a: "bottom", b: "top", lane: "loja" },
+  { id: "fin-fech", from: "finalizar", to: "fechar", a: "left", b: "right", lane: "central" },
+  { id: "fech-fim", from: "fechar", to: "fim", a: "bottom", b: "top", lane: "central" },
+];
+
+let fluxoMode = "ok";
+let fluxoIdx = 0;
+let fluxoTimer = null;
+let fluxoRaf = 0;
+let fluxoResize = null;
+
+function showFluxoCopy(step) {
+  const el = $("fluxo-now");
+  if (el) el.textContent = FLUXO_COPY[step] || "";
+}
+
+function fluxoAnchor(step, side) {
+  const board = $("fluxo-board");
+  const svg = $("fluxo-wires");
+  const el = board && board.querySelector(`[data-step="${step}"]`);
+  if (!board || !svg || !el) return { x: 0, y: 0 };
+  const origin = svg.getBoundingClientRect();
+  const r = el.getBoundingClientRect();
+  const x = r.left - origin.left;
+  const y = r.top - origin.top;
+  const w = r.width;
+  const h = r.height;
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  if (side === "top") return { x: cx, y };
+  if (side === "bottom") return { x: cx, y: y + h };
+  if (side === "left") return { x, y: cy };
+  if (side === "right") return { x: x + w, y: cy };
+  return { x: cx, y: cy };
+}
+
+function fluxoOffset(p, side, dist) {
+  if (side === "top") return { x: p.x, y: p.y - dist };
+  if (side === "bottom") return { x: p.x, y: p.y + dist };
+  if (side === "left") return { x: p.x - dist, y: p.y };
+  if (side === "right") return { x: p.x + dist, y: p.y };
+  return { x: p.x, y: p.y };
+}
+
+function fluxoPathD(wire, A, B) {
+  const gap = Math.min(12, Math.max(6, (Math.abs(B.x - A.x) + Math.abs(B.y - A.y)) / 8));
+  const A2 = fluxoOffset(A, wire.a, gap);
+  const B2 = fluxoOffset(B, wire.b, gap);
+  const round = (n) => Math.round(n * 10) / 10;
+  const pt = (p) => `${round(p.x)} ${round(p.y)}`;
+
+  if (wire.bypass) {
+    const x = round(Math.max(A2.x, B2.x) + 12);
+    return `M ${pt(A)} L ${pt(A2)} L ${x} ${round(A2.y)} L ${x} ${round(B2.y)} L ${pt(B2)} L ${pt(B)}`;
+  }
+
+  const vert = (wire.a === "bottom" && wire.b === "top") || (wire.a === "top" && wire.b === "bottom");
+  const horz = (wire.a === "right" && wire.b === "left") || (wire.a === "left" && wire.b === "right");
+  if (vert && Math.abs(A.x - B.x) < 3) return `M ${pt(A)} L ${pt(B)}`;
+  if (horz && Math.abs(A.y - B.y) < 3) return `M ${pt(A)} L ${pt(B)}`;
+  if (vert) {
+    const my = round((A2.y + B2.y) / 2);
+    return `M ${pt(A)} L ${pt(A2)} L ${round(A2.x)} ${my} L ${round(B2.x)} ${my} L ${pt(B2)} L ${pt(B)}`;
+  }
+  if (horz) {
+    const mx = round((A2.x + B2.x) / 2);
+    return `M ${pt(A)} L ${pt(A2)} L ${mx} ${round(A2.y)} L ${mx} ${round(B2.y)} L ${pt(B2)} L ${pt(B)}`;
+  }
+  return `M ${pt(A)} L ${pt(A2)} L ${round(B2.x)} ${round(A2.y)} L ${pt(B2)} L ${pt(B)}`;
+}
+
+function layoutFluxoWires() {
+  const board = $("fluxo-board");
+  const svg = $("fluxo-wires");
+  const g = $("fluxo-paths");
+  if (!board || !svg || !g) return;
+  const w = board.clientWidth;
+  const h = board.clientHeight;
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.setAttribute("width", w);
+  svg.setAttribute("height", h);
+  g.innerHTML = "";
+  FLUXO_WIRES.forEach((wire) => {
+    const A = fluxoAnchor(wire.from, wire.a);
+    const B = fluxoAnchor(wire.to, wire.b);
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", fluxoPathD(wire, A, B));
+    path.setAttribute("data-wire", wire.id);
+    path.setAttribute("class", `fluxo-wire w-${wire.lane}`);
+    g.appendChild(path);
+    if (wire.tag) {
+      const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      const mx = (A.x + B.x) / 2;
+      const my = (A.y + B.y) / 2;
+      label.setAttribute("x", mx);
+      label.setAttribute("y", my - 8);
+      label.setAttribute("text-anchor", "middle");
+      label.setAttribute("data-wire-tag", wire.id);
+      label.setAttribute("class", "fluxo-tag");
+      label.textContent = wire.tag;
+      g.appendChild(label);
+    }
+  });
+  paintFluxoStep();
+}
+
+function paintFluxoStep() {
+  const steps = FLUXO_STEPS[fluxoMode];
+  const current = steps[fluxoIdx] || steps[0];
+  const seen = new Set(steps.slice(0, fluxoIdx + 1));
+  document.querySelectorAll("#fluxo-board [data-step]").forEach((el) => {
+    const id = el.dataset.step;
+    el.classList.toggle("is-on", id === current || (id === "tratativas" && ["cadastro", "custo", "fiscal"].includes(current)));
+    el.classList.toggle("is-done", seen.has(id) && id !== current);
+  });
+  const live = new Set(FLUXO_EDGES[fluxoMode].slice(0, Math.max(0, fluxoIdx)));
+  document.querySelectorAll("#fluxo-paths [data-wire]").forEach((el) => {
+    el.classList.toggle("is-live", live.has(el.getAttribute("data-wire")));
+  });
+  document.querySelectorAll("#fluxo-paths [data-wire-tag]").forEach((el) => {
+    el.classList.toggle("is-live", live.has(el.getAttribute("data-wire-tag")));
+  });
+  showFluxoCopy(current);
+  moveFluxoToken();
+}
+
+function moveFluxoToken() {
+  const token = $("fluxo-token");
+  if (!token) return;
+  const edges = FLUXO_EDGES[fluxoMode];
+  const wireId = edges[Math.max(0, fluxoIdx - 1)];
+  const path = wireId && document.querySelector(`#fluxo-paths [data-wire="${wireId}"]`);
+  if (!path || !fluxoIdx) {
+    const A = fluxoAnchor(FLUXO_STEPS[fluxoMode][fluxoIdx] || "inicio", "center");
+    token.setAttribute("cx", A.x);
+    token.setAttribute("cy", A.y);
+    token.classList.add("is-on");
+    return;
+  }
+  const len = path.getTotalLength();
+  if (fluxoRaf) cancelAnimationFrame(fluxoRaf);
+  const start = performance.now();
+  const dur = 720;
+  token.classList.add("is-on");
+  const tick = (now) => {
+    const t = Math.min(1, (now - start) / dur);
+    const p = path.getPointAtLength(t * len);
+    token.setAttribute("cx", p.x);
+    token.setAttribute("cy", p.y);
+    if (t < 1) fluxoRaf = requestAnimationFrame(tick);
+  };
+  fluxoRaf = requestAnimationFrame(tick);
+}
+
+function advanceFluxo() {
+  const steps = FLUXO_STEPS[fluxoMode];
+  fluxoIdx = (fluxoIdx + 1) % steps.length;
+  paintFluxoStep();
+}
+
+function setFluxoMode(mode) {
+  fluxoMode = mode === "inc" ? "inc" : "ok";
+  fluxoIdx = 0;
+  document.querySelectorAll("[data-fluxo-mode]").forEach((b) => b.classList.toggle("is-on", b.dataset.fluxoMode === fluxoMode));
+  paintFluxoStep();
+}
+
+function setFluxoRunning(on) {
+  if (fluxoTimer) {
+    clearInterval(fluxoTimer);
+    fluxoTimer = null;
+  }
+  if (fluxoRaf) {
+    cancelAnimationFrame(fluxoRaf);
+    fluxoRaf = 0;
+  }
+  if (fluxoResize) {
+    window.removeEventListener("resize", fluxoResize);
+    fluxoResize = null;
+  }
+  if (!on) return;
+  layoutFluxoWires();
+  fluxoIdx = 0;
+  paintFluxoStep();
+  fluxoResize = () => layoutFluxoWires();
+  window.addEventListener("resize", fluxoResize);
+  requestAnimationFrame(() => layoutFluxoWires());
+  setTimeout(layoutFluxoWires, 60);
+  fluxoTimer = setInterval(advanceFluxo, 1600);
+}
+
 function setTab(tab) {
   TAB = tab;
   document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   $("view-central").classList.toggle("hidden", tab !== "central");
   $("view-inc").classList.toggle("hidden", tab !== "inc");
   $("view-ops").classList.toggle("hidden", tab !== "ops");
+  $("view-fluxo").classList.toggle("hidden", tab !== "fluxo");
+  $("filters").classList.toggle("hidden", tab === "fluxo");
+  $("kpis").classList.toggle("hidden", tab === "fluxo");
+  if (tab === "fluxo") {
+    $("headline").className = "headline hidden";
+    $("headline").textContent = "";
+    setFluxoRunning(true);
+    return;
+  }
+  setFluxoRunning(false);
+  if (!DATA) return;
   const tipos = tab === "ops" ? ["exclusao_nf", "exclusao_produto"] : DATA.filtros.tipos;
   fillSelect("f-tipo", tipos || [], "Todos os tipos", TIPO_LABEL);
   $("f-tipo").disabled = false;
@@ -801,7 +1061,7 @@ function goHome() {
 }
 
 function render() {
-  if (!DATA) return;
+  if (!DATA || TAB === "fluxo") return;
   renderKpis();
   if (TAB === "central") renderCentral();
   renderIncTable(filteredInc());
@@ -822,6 +1082,16 @@ function bind() {
   const home = $("btn-home");
   if (home) home.addEventListener("click", goHome);
   document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
+  document.querySelectorAll("[data-fluxo-mode]").forEach((b) => {
+    b.addEventListener("click", () => setFluxoMode(b.dataset.fluxoMode));
+  });
+  const fluxoBoard = $("fluxo-board");
+  if (fluxoBoard) {
+    fluxoBoard.addEventListener("click", (ev) => {
+      const node = ev.target.closest("[data-step]");
+      if (node && node.dataset.step) showFluxoCopy(node.dataset.step);
+    });
+  }
   $("d-close").addEventListener("click", closeDrawer);
   const scrim = $("drawer-scrim");
   if (scrim) scrim.addEventListener("click", closeDrawer);
@@ -850,8 +1120,7 @@ function boot(data) {
   (DATA.operacional || []).sort((a, b) => String(b.iso || "").localeCompare(String(a.iso || "")));
   (DATA.nfs || []).sort((a, b) => String(b.iso || "").localeCompare(String(a.iso || "")));
   const p = data.periodo || {};
-  const planilha = data.usuarios_arquivo ? ` | ${data.usuarios_arquivo}` : "";
-  $("meta").textContent = `${data.arquivo || ""}${planilha} | ${fmtData(p.inicio)} a ${fmtData(p.fim)} | gerado ${data.gerado_em || ""}`;
+  $("meta").textContent = metaLabel(data);
   const periodoEl = $("periodo");
   const periodoTxt = fmtPeriodo(p.inicio, p.fim);
   if (periodoEl) {
