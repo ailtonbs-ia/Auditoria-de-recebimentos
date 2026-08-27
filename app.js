@@ -480,6 +480,76 @@ function teamStats() {
   };
 }
 
+function ymdLocal(date) {
+  const d = date || new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function ymdShift(ymd, days) {
+  const [y, m, d] = String(ymd || "")
+    .split("-")
+    .map(Number);
+  if (!y || !m || !d) return "";
+  const dt = new Date(y, m - 1, d + days);
+  return ymdLocal(dt);
+}
+
+function rotuloDiaOperacional(data) {
+  const hoje = ymdLocal();
+  if (data === hoje) return "Hoje";
+  if (data === ymdShift(hoje, -1)) return "Ontem";
+  return "Ultimo dia";
+}
+
+function diaOperacionalCentral() {
+  const rows = (DATA.lancamentos || []).filter((r) => !isLojaFora(r.loja) && !isForn331(r));
+  const datas = [...new Set(rows.map((r) => r.data).filter(Boolean))].sort();
+  const data = datas[datas.length - 1] || "";
+  const doDia = rows.filter((r) => r.data === data);
+  const central = doDia.filter((r) => r.usuario_eh_central || isCentralCode(r.usuario));
+  const lojas = new Set(central.map((r) => r.loja).filter(Boolean));
+  const universo = (DATA.filtros && DATA.filtros.lojas ? DATA.filtros.lojas : [])
+    .filter((l) => l && !isLojaFora(l));
+  const lojasMeta = universo.length;
+  const lojasPct = lojasMeta ? (lojas.size / lojasMeta) * 100 : 0;
+  return { data, nfs: central.length, lojas: lojas.size, lojasMeta, lojasPct, totalDia: doDia.length };
+}
+
+function renderDiaCentral() {
+  const el = $("dia-central");
+  if (!el) return;
+  if (TAB !== "central") {
+    el.classList.add("hidden");
+    return;
+  }
+  el.classList.remove("hidden");
+  const d = diaOperacionalCentral();
+  if (!d.data) {
+    el.innerHTML = `<div class="dia-central-card" style="cursor:default"><div class="dia-central-when"><span class="lbl">Dia operacional</span><strong>${dash}</strong></div></div>`;
+    return;
+  }
+  const ativo = $("f-data") && $("f-data").value === d.data;
+  el.innerHTML = `<button type="button" class="dia-central-card" data-dia="${esc(d.data)}" title="Meta: atender todas as lojas no dia. Clique para filtrar este dia">
+      <div class="dia-central-when">
+        <span class="lbl">${rotuloDiaOperacional(d.data)}${ativo ? " · filtrado" : ""}</span>
+        <strong>${fmtData(d.data)}</strong>
+      </div>
+      <div class="dia-central-stat">
+        <span class="lbl">NFs da Central</span>
+        <b>${fmt(d.nfs)}</b>
+        <div class="sub">de ${fmt(d.totalDia)} no dia</div>
+      </div>
+      <div class="dia-central-stat">
+        <span class="lbl">Lojas atendidas</span>
+        <b style="color:${metaColor(d.lojasPct, 100)}">${fmt(d.lojas)} de ${fmt(d.lojasMeta)}</b>
+        <div class="sub">${fmtPct(d.lojasPct)} · meta 100%</div>
+      </div>
+    </button>`;
+}
+
 function renderKpis() {
   const t = DATA.totais;
   const headline = $("headline");
@@ -1040,6 +1110,8 @@ function setTab(tab) {
   $("view-fluxo").classList.toggle("hidden", tab !== "fluxo");
   $("filters").classList.toggle("hidden", tab === "fluxo");
   $("kpis").classList.toggle("hidden", tab === "fluxo");
+  const diaEl = $("dia-central");
+  if (diaEl) diaEl.classList.toggle("hidden", tab !== "central");
   if (tab === "fluxo") {
     $("headline").className = "headline hidden";
     $("headline").textContent = "";
@@ -1062,6 +1134,7 @@ function goHome() {
 
 function render() {
   if (!DATA || TAB === "fluxo") return;
+  renderDiaCentral();
   renderKpis();
   if (TAB === "central") renderCentral();
   renderIncTable(filteredInc());
@@ -1099,6 +1172,15 @@ function bind() {
     if (e.key === "Escape") closeDrawer();
   });
   document.body.addEventListener("click", (ev) => {
+    const btnDia = ev.target.closest("[data-dia]");
+    if (btnDia && btnDia.dataset.dia) {
+      const sel = $("f-data");
+      if (sel) {
+        sel.value = sel.value === btnDia.dataset.dia ? "" : btnDia.dataset.dia;
+        render();
+      }
+      return;
+    }
     const btn = ev.target.closest("[data-filter-key]");
     if (btn) {
       const map = { loja: "f-loja", forn: "f-forn", tipo: "f-tipo" };
