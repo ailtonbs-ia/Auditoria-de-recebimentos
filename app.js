@@ -627,6 +627,29 @@ function diaOperacionalCentral() {
   };
 }
 
+function recordeLojasCentral() {
+  const filtroSeg = ($("f-segmento") && $("f-segmento").value) || "";
+  const universo = coberturaLista().filter((e) => !filtroSeg || e.segmento === filtroSeg);
+  const lojaSet = new Set(universo.map((e) => e.loja));
+  if (!lojaSet.size) return null;
+  const porDia = {};
+  (DATA.lancamentos || []).forEach((r) => {
+    if (!r.data || isLojaFora(r.loja) || isForn331(r)) return;
+    if (!(r.usuario_eh_central || isCentralCode(r.usuario))) return;
+    if (!r.loja || !lojaSet.has(r.loja)) return;
+    if (!porDia[r.data]) porDia[r.data] = new Set();
+    porDia[r.data].add(r.loja);
+  });
+  let best = null;
+  Object.keys(porDia).forEach((data) => {
+    const lojas = porDia[data].size;
+    if (!best || lojas > best.lojas || (lojas === best.lojas && data > best.data)) {
+      best = { data, lojas };
+    }
+  });
+  return best;
+}
+
 function renderDiaCentral() {
   const el = $("dia-central");
   if (!el) return;
@@ -654,23 +677,35 @@ function renderDiaCentral() {
       </button>`;
     })
     .join("");
+  const recorde = recordeLojasCentral();
+  const recordeOn = recorde && ($("f-data") && $("f-data").value) === recorde.data;
+  const recordeHtml = recorde && recorde.lojas
+    ? `<button type="button" class="dia-central-recorde${recordeOn ? " is-on" : ""}" data-dia="${esc(recorde.data)}" title="Dia em que a Central atendeu mais lojas no periodo. Clique para filtrar">
+        <span class="lbl">Mais lojas no dia</span>
+        <b>${fmtData(recorde.data)}</b>
+        <div class="sub">${fmt(recorde.lojas)} lojas${recorde.data === ymdLocal() ? " · hoje" : ""}</div>
+      </button>`
+    : "";
   el.innerHTML = `<div class="dia-central-wrap">
-    <button type="button" class="dia-central-card" data-dia="${esc(d.data)}" title="${esc(titulo)}">
-      <div class="dia-central-when">
-        <span class="lbl">${rotuloDiaOperacional(d.data, d.filtrado)}</span>
-        <strong>${fmtData(d.data)}</strong>
-      </div>
-      <div class="dia-central-stat">
-        <span class="lbl">NFs da Central</span>
-        <b>${fmt(d.nfs)}</b>
-        <div class="sub">de ${fmt(d.totalDia)} no dia</div>
-      </div>
-      <div class="dia-central-stat">
-        <span class="lbl">Unidades atendidas</span>
-        <b style="color:${metaColor(d.lojasPct, 100)}">${fmt(d.lojas)} de ${fmt(d.lojasMeta)}</b>
-        <div class="sub">${fmtPct(d.lojasPct)} · lojas + emporios</div>
-      </div>
-    </button>
+    <div class="dia-central-top">
+      <button type="button" class="dia-central-card" data-dia="${esc(d.data)}" title="${esc(titulo)}">
+        <div class="dia-central-when">
+          <span class="lbl">${rotuloDiaOperacional(d.data, d.filtrado)}</span>
+          <strong>${fmtData(d.data)}</strong>
+        </div>
+        <div class="dia-central-stat">
+          <span class="lbl">NFs da Central</span>
+          <b>${fmt(d.nfs)}</b>
+          <div class="sub">de ${fmt(d.totalDia)} no dia</div>
+        </div>
+        <div class="dia-central-stat">
+          <span class="lbl">Unidades atendidas</span>
+          <b style="color:${metaColor(d.lojasPct, 100)}">${fmt(d.lojas)} de ${fmt(d.lojasMeta)}</b>
+          <div class="sub">${fmtPct(d.lojasPct)} · lojas + emporios</div>
+        </div>
+      </button>
+      ${recordeHtml}
+    </div>
     <div class="dia-grupos">${gruposHtml}</div>
   </div>`;
 }

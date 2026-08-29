@@ -216,12 +216,18 @@ body.drawer-open { overflow: hidden; }
   border-radius: var(--radius);
   overflow: hidden;
 }
+.dia-central-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(168px, 220px);
+  align-items: stretch;
+}
 .dia-central-card {
   display: grid;
   grid-template-columns: minmax(140px, 0.9fr) minmax(0, 1.2fr) minmax(0, 1.2fr);
   gap: 8px 18px;
   align-items: center;
   width: 100%;
+  min-width: 0;
   background: transparent;
   border: 0;
   border-radius: 0;
@@ -232,6 +238,27 @@ body.drawer-open { overflow: hidden; }
   cursor: pointer;
 }
 .dia-central-card:hover { background: #1c1f26; }
+.dia-central-recorde {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 0;
+  margin: 8px 12px 8px 0;
+  padding: 10px 14px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: inherit;
+  font: inherit;
+  text-align: right;
+  cursor: pointer;
+}
+.dia-central-recorde:hover { border-color: #4a5160; background: #1c1f26; }
+.dia-central-recorde.is-on {
+  border-color: var(--accent);
+  box-shadow: inset -3px 0 0 var(--accent);
+}
 .dia-grupos {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -307,7 +334,8 @@ body.drawer-open { overflow: hidden; }
 .seg-tag.seg-mercearia { background: #3a2f1e; color: #e0c48a; }
 .rank-bar .name .seg-tag { margin-right: 6px; }
 .dia-central-when .lbl,
-.dia-central-stat .lbl {
+.dia-central-stat .lbl,
+.dia-central-recorde .lbl {
   display: block;
   color: var(--muted);
   font-size: 11px;
@@ -321,7 +349,8 @@ body.drawer-open { overflow: hidden; }
   font-size: 18px;
   font-weight: 800;
 }
-.dia-central-stat b {
+.dia-central-stat b,
+.dia-central-recorde b {
   display: block;
   margin-top: 4px;
   font-size: 22px;
@@ -329,7 +358,8 @@ body.drawer-open { overflow: hidden; }
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
 }
-.dia-central-stat .sub {
+.dia-central-stat .sub,
+.dia-central-recorde .sub {
   color: var(--muted);
   font-size: 11px;
   margin-top: 4px;
@@ -685,10 +715,16 @@ tr.clickable { cursor: pointer; }
   .filters { grid-template-columns: 1fr; }
   .filters #q,
   .filters button { grid-column: 1 / -1; }
+  .dia-central-top { grid-template-columns: 1fr; }
   .dia-central-card {
     grid-template-columns: 1fr 1fr;
   }
   .dia-central-when { grid-column: 1 / -1; }
+  .dia-central-recorde {
+    margin: 0 12px 8px;
+    align-items: flex-start;
+    text-align: left;
+  }
   .dia-grupos { grid-template-columns: 1fr; padding: 0 10px 12px; }
   .filters #btn-csv { grid-column: auto; }
   .filters #btn-csv { width: 100%; }
