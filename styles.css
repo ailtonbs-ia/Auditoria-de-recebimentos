@@ -340,7 +340,7 @@ body.drawer-open { overflow: hidden; }
 .team-compact { margin-top: 8px; }
 .team-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) repeat(3, auto);
+  grid-template-columns: minmax(0, 1.4fr) repeat(4, auto);
   gap: 10px;
   align-items: center;
   padding: 8px 0;
@@ -569,7 +569,7 @@ tr.clickable { cursor: pointer; }
   .bar-row > span:last-child { grid-area: q; }
   .bar-row .bar { grid-area: b; }
   .team-row {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
   }
   .team-row > div:first-child { grid-column: 1 / -1; }

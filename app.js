@@ -384,6 +384,7 @@ function teamStats() {
     nome: prettyName(m.nome),
     grupo: m.grupo,
     nfs_lancadas: 0,
+    lojas_atendidas: new Set(),
     itens_aceitos: 0,
     nfs_aceitas: new Set(),
     exclusoes_nf: 0,
@@ -401,6 +402,7 @@ function teamStats() {
     const n = normUser(row.usuario);
     if (byCode[n]) {
       byCode[n].nfs_lancadas += 1;
+      if (row.loja) byCode[n].lojas_atendidas.add(row.loja);
       lancCentral += 1;
     } else {
       lancLojas += 1;
@@ -497,17 +499,18 @@ function ymdShift(ymd, days) {
   return ymdLocal(dt);
 }
 
-function rotuloDiaOperacional(data) {
+function rotuloDiaOperacional(data, filtrado) {
   const hoje = ymdLocal();
-  if (data === hoje) return "Hoje";
-  if (data === ymdShift(hoje, -1)) return "Ontem";
-  return "Ultimo dia";
+  if (data === hoje) return filtrado ? "Hoje · filtrado" : "Hoje";
+  if (data === ymdShift(hoje, -1)) return filtrado ? "Ontem · filtrado" : "Ontem";
+  return filtrado ? "Dia filtrado" : "Ultimo dia";
 }
 
 function diaOperacionalCentral() {
   const rows = (DATA.lancamentos || []).filter((r) => !isLojaFora(r.loja) && !isForn331(r));
   const datas = [...new Set(rows.map((r) => r.data).filter(Boolean))].sort();
-  const data = datas[datas.length - 1] || "";
+  const filtrada = ($("f-data") && $("f-data").value) || "";
+  const data = filtrada || datas[datas.length - 1] || "";
   const doDia = rows.filter((r) => r.data === data);
   const central = doDia.filter((r) => r.usuario_eh_central || isCentralCode(r.usuario));
   const lojas = new Set(central.map((r) => r.loja).filter(Boolean));
@@ -515,7 +518,15 @@ function diaOperacionalCentral() {
     .filter((l) => l && !isLojaFora(l));
   const lojasMeta = universo.length;
   const lojasPct = lojasMeta ? (lojas.size / lojasMeta) * 100 : 0;
-  return { data, nfs: central.length, lojas: lojas.size, lojasMeta, lojasPct, totalDia: doDia.length };
+  return {
+    data,
+    filtrado: Boolean(filtrada),
+    nfs: central.length,
+    lojas: lojas.size,
+    lojasMeta,
+    lojasPct,
+    totalDia: doDia.length,
+  };
 }
 
 function renderDiaCentral() {
@@ -531,10 +542,12 @@ function renderDiaCentral() {
     el.innerHTML = `<div class="dia-central-card" style="cursor:default"><div class="dia-central-when"><span class="lbl">Dia operacional</span><strong>${dash}</strong></div></div>`;
     return;
   }
-  const ativo = $("f-data") && $("f-data").value === d.data;
-  el.innerHTML = `<button type="button" class="dia-central-card" data-dia="${esc(d.data)}" title="Meta: atender todas as lojas no dia. Clique para filtrar este dia">
+  const titulo = d.filtrado
+    ? "Meta: atender todas as lojas no dia. Clique para limpar o filtro desta data"
+    : "Meta: atender todas as lojas no dia. Clique para filtrar este dia";
+  el.innerHTML = `<button type="button" class="dia-central-card" data-dia="${esc(d.data)}" title="${esc(titulo)}">
       <div class="dia-central-when">
-        <span class="lbl">${rotuloDiaOperacional(d.data)}${ativo ? " · filtrado" : ""}</span>
+        <span class="lbl">${rotuloDiaOperacional(d.data, d.filtrado)}</span>
         <strong>${fmtData(d.data)}</strong>
       </div>
       <div class="dia-central-stat">
@@ -669,6 +682,7 @@ function renderCentral() {
       return `<div class="team-row${lead ? " lead" : ""}">
         <div><div class="pname">${esc(m.nome)}</div><span class="muted">${esc(m.codigo)}</span></div>
         <div><b>${fmt(m.nfs_lancadas)}</b><span class="muted">NFs</span></div>
+        <div><b>${fmt(m.lojas_atendidas.size)}</b><span class="muted">lojas atendidas</span></div>
         <div><b>${fmt(m.itens_aceitos)}</b><span class="muted">itens aceitos</span></div>
         <div><b>${fmt(m.exclusoes_nf + m.exclusoes_produto)}</b><span class="muted">exclusoes</span></div>
       </div>`;
