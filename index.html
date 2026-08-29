@@ -51,6 +51,7 @@
     <div class="filters" id="filters">
       <input id="q" type="search" placeholder="Buscar NF, chave, produto, pessoa, justificativa..." />
       <select id="f-data"><option value="">Todas as datas</option></select>
+      <select id="f-segmento"><option value="">Todos os grupos</option></select>
       <select id="f-loja"><option value="">Todas as lojas</option></select>
       <select id="f-forn"><option value="">Todos os fornecedores</option></select>
       <select id="f-tipo"><option value="">Todos os tipos</option></select>
@@ -64,8 +65,8 @@
     <section id="view-central">
       <div class="board">
         <article class="card board-wide">
-          <div class="lbl">Top 10 lojas com inconsistencia</div>
-          <p class="hint">Clique na loja para filtrar o painel</p>
+          <div class="lbl">Top 10 unidades com inconsistencia</div>
+          <p class="hint">Clique na loja ou empório para filtrar o painel</p>
           <div id="top-lojas" class="rank-bars"></div>
         </article>
         <article class="card">
@@ -103,7 +104,7 @@
           <div class="lbl">Rankings</div>
           <div class="ranks">
             <div class="rank-cell">
-              <div class="muted">Lojas (NFs inconsistentes)</div>
+              <div class="muted">Unidades (NFs inconsistentes)</div>
               <ul class="rank-list" id="rk-loja"></ul>
             </div>
             <div class="rank-cell">
@@ -129,12 +130,13 @@
             <tr>
               <th>Data</th>
               <th>Loja</th>
+              <th>Grupo</th>
               <th>NF</th>
               <th>Fornecedor</th>
               <th>Produto</th>
               <th>Tipo</th>
               <th>Aceite</th>
-              <th>Grupo</th>
+              <th>Equipe</th>
               <th>Justificativa</th>
             </tr>
           </thead>
@@ -152,6 +154,7 @@
             <tr>
               <th>Data</th>
               <th>Loja</th>
+              <th>Grupo</th>
               <th>NF</th>
               <th>Fornecedor</th>
               <th>Tipo</th>
@@ -159,7 +162,7 @@
               <th>De</th>
               <th>Para</th>
               <th>Pessoa</th>
-              <th>Grupo</th>
+              <th>Equipe</th>
             </tr>
           </thead>
           <tbody id="tb-ops"></tbody>

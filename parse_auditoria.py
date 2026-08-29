@@ -414,19 +414,33 @@ def eh_central_grupo(grupo: str) -> bool:
     return "central de recebimento" in fold(grupo)
 
 
-def load_usuarios(base: Path) -> tuple[dict[str, dict], list[dict], str]:
-    files = sorted(base.glob("*Usuario*.xlsx")) or sorted(base.glob("*.xlsx"))
-    mapa: dict[str, dict] = {}
-    equipe: list[dict] = []
-    if not files:
-        print("Lista de usuarios .xlsx nao encontrada; monitoramento segue so com codigos.")
-        return mapa, equipe, ""
-    src = files[0]
+SEGMENTOS_COBERTURA = ("LOJAS", "EMPORIOS", "MERCEARIA")
+
+
+def norm_segmento(raw: str) -> str:
+    t = fold(raw).strip()
+    if t in {"loja", "lojas"}:
+        return "LOJAS"
+    if t in {"emporio", "emporios", "empório", "empórios"}:
+        return "EMPORIOS"
+    if t in {"mercearia", "mercearias"}:
+        return "MERCEARIA"
+    if t == "cd":
+        return "CD"
+    if t == "barra":
+        return "BARRA"
+    if t == "agro":
+        return "AGRO"
+    return (raw or "").strip().upper()
+
+
+def read_xlsx_rows(path: Path) -> list[dict[str, str]]:
     import zipfile
     import xml.etree.ElementTree as ET
 
     ns = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
-    with zipfile.ZipFile(src) as zf:
+    rows: list[dict[str, str]] = []
+    with zipfile.ZipFile(path) as zf:
         strings: list[str] = []
         if "xl/sharedStrings.xml" in zf.namelist():
             root = ET.fromstring(zf.read("xl/sharedStrings.xml"))
@@ -434,8 +448,6 @@ def load_usuarios(base: Path) -> tuple[dict[str, dict], list[dict], str]:
                 texts = [t.text or "" for t in si.findall(".//m:t", ns)]
                 strings.append("".join(texts))
         sheet = ET.fromstring(zf.read("xl/worksheets/sheet1.xml"))
-        seen_eq: set[str] = set()
-        total = 0
         for row in sheet.findall("m:sheetData/m:row", ns):
             cells: dict[str, str] = {}
             for c in row.findall("m:c", ns):
@@ -448,28 +460,93 @@ def load_usuarios(base: Path) -> tuple[dict[str, dict], list[dict], str]:
                     idx = int(v)
                     v = strings[idx] if idx < len(strings) else v
                 cells[col] = v
-            codigo_raw = cells.get("B", "")
-            nome = (cells.get("C") or "").strip()
-            grupo = (cells.get("D") or "").strip()
-            codigo = norm_codigo(codigo_raw)
-            if not codigo:
-                continue
-            if fold(codigo_raw) == "usuario" or fold(nome) == "nome":
-                continue
-            info = {
-                "codigo": codigo,
-                "nome": nome or codigo,
-                "grupo": grupo,
-                "eh_central": eh_central_grupo(grupo),
-                "cadastrado": True,
-            }
-            mapa[codigo] = info
-            if info["eh_central"] and codigo not in seen_eq:
-                seen_eq.add(codigo)
-                equipe.append(info)
-            total += 1
+            rows.append(cells)
+    return rows
+
+
+def load_usuarios(base: Path) -> tuple[dict[str, dict], list[dict], str]:
+    files = sorted(base.glob("*Usuario*.xlsx"))
+    mapa: dict[str, dict] = {}
+    equipe: list[dict] = []
+    if not files:
+        print("Lista de usuarios .xlsx nao encontrada; monitoramento segue so com codigos.")
+        return mapa, equipe, ""
+    src = files[0]
+    seen_eq: set[str] = set()
+    total = 0
+    for cells in read_xlsx_rows(src):
+        codigo_raw = cells.get("B", "")
+        nome = (cells.get("C") or "").strip()
+        grupo = (cells.get("D") or "").strip()
+        codigo = norm_codigo(codigo_raw)
+        if not codigo:
+            continue
+        if fold(codigo_raw) == "usuario" or fold(nome) == "nome":
+            continue
+        info = {
+            "codigo": codigo,
+            "nome": nome or codigo,
+            "grupo": grupo,
+            "eh_central": eh_central_grupo(grupo),
+            "cadastrado": True,
+        }
+        mapa[codigo] = info
+        if info["eh_central"] and codigo not in seen_eq:
+            seen_eq.add(codigo)
+            equipe.append(info)
+        total += 1
     print(f"Usuarios na planilha {src.name}: {total} | Central: {len(equipe)}")
     return mapa, equipe, src.name
+
+
+def load_empresas(base: Path) -> tuple[dict[str, dict], dict[str, dict], list[dict], str]:
+    files = sorted(base.glob("*Empresa*.xlsx"))
+    by_nro: dict[str, dict] = {}
+    by_loja: dict[str, dict] = {}
+    cobertura: list[dict] = []
+    if not files:
+        print("Lista de Empresas.xlsx nao encontrada; cobertura usa so as lojas do lote.")
+        return by_nro, by_loja, cobertura, ""
+    src = files[0]
+    for cells in read_xlsx_rows(src):
+        nro_raw = cells.get("A", "")
+        loja = (cells.get("B") or "").strip()
+        razao = (cells.get("C") or "").strip()
+        segmento = norm_segmento(cells.get("F") or "")
+        nro = norm_codigo(nro_raw)
+        if not nro and not loja:
+            continue
+        if fold(nro_raw) == "nroempresa" or fold(loja) == "nomereduzido":
+            continue
+        info = {
+            "nroempresa": nro,
+            "loja": loja,
+            "razao": razao,
+            "segmento": segmento,
+        }
+        if nro:
+            by_nro[nro] = info
+        if loja:
+            by_loja[loja] = info
+        if segmento in SEGMENTOS_COBERTURA and not eh_loja_fora(loja, nro):
+            cobertura.append({"nroempresa": nro, "loja": loja, "segmento": segmento})
+    cobertura.sort(key=lambda e: (SEGMENTOS_COBERTURA.index(e["segmento"]), e["loja"]))
+    contagem = {s: sum(1 for e in cobertura if e["segmento"] == s) for s in SEGMENTOS_COBERTURA}
+    print(
+        f"Empresas na planilha {src.name}: {len(by_nro)} | "
+        f"Lojas {contagem['LOJAS']} | Emporios {contagem['EMPORIOS']} | Mercearias {contagem['MERCEARIA']}"
+    )
+    return by_nro, by_loja, cobertura, src.name
+
+
+def info_empresa(nro: str, loja: str, by_nro: dict[str, dict], by_loja: dict[str, dict]) -> dict:
+    n = norm_codigo(nro)
+    if n and n in by_nro:
+        return by_nro[n]
+    nome = (loja or "").strip()
+    if nome and nome in by_loja:
+        return by_loja[nome]
+    return {"nroempresa": n or (nro or "").strip(), "loja": nome, "razao": "", "segmento": ""}
 
 
 def info_usuario(codigo: str, mapa: dict[str, dict]) -> dict:
@@ -511,8 +588,16 @@ def build_timeline_event(row: dict, tipo: str, detalhe: str, mapa: dict[str, dic
     }
 
 
+def carimbar_empresa(rec: dict, by_nro: dict[str, dict], by_loja: dict[str, dict]) -> None:
+    emp = info_empresa(rec.get("nroempresa") or "", rec.get("loja") or "", by_nro, by_loja)
+    if emp.get("nroempresa") and not rec.get("nroempresa"):
+        rec["nroempresa"] = emp["nroempresa"]
+    rec["segmento"] = emp.get("segmento") or ""
+
+
 def parse(path: Path) -> dict:
     usuarios_mapa, equipe, usuarios_arquivo = load_usuarios(BASE)
+    empresas_nro, empresas_loja, cobertura, empresas_arquivo = load_empresas(BASE)
     nfs: dict[str, dict] = {}
     produtos_por_nf: dict[str, dict[str, str]] = defaultdict(dict)
     volume_lojas: dict[str, int] = defaultdict(int)
@@ -756,6 +841,14 @@ def parse(path: Path) -> dict:
             ev["usuario_nome"] = u["nome"]
             ev["usuario_grupo"] = u["grupo"]
             ev["usuario_eh_central"] = u["eh_central"]
+    for rec in inconsistencias:
+        carimbar_empresa(rec, empresas_nro, empresas_loja)
+    for rec in operacional:
+        carimbar_empresa(rec, empresas_nro, empresas_loja)
+    for rec in lancamentos:
+        carimbar_empresa(rec, empresas_nro, empresas_loja)
+    for rec in nfs.values():
+        carimbar_empresa(rec, empresas_nro, empresas_loja)
 
     nf_com_inc = {item["nf_id"] for item in inconsistencias}
     nf_ops = {ev["seqaux"] + "|" + ev["chave"] for ev in operacional}
@@ -796,6 +889,7 @@ def parse(path: Path) -> dict:
                 "aceite_nome": itens[0].get("aceite_nome", "") if itens else "",
                 "aceite_grupo": itens[0].get("aceite_grupo", "") if itens else "",
                 "aceite_eh_central": itens[0].get("aceite_eh_central", False) if itens else False,
+                "segmento": h.get("segmento") or (itens[0].get("segmento") if itens else ""),
                 "justificativa": itens[0]["justificativa"] if itens else "",
                 "status": itens[0]["status"] if itens else "",
                 "iso": itens[0]["iso"] if itens else h["ultima"],
@@ -876,6 +970,7 @@ def parse(path: Path) -> dict:
         "gerado_em": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
         "arquivo": path.name,
         "usuarios_arquivo": usuarios_arquivo,
+        "empresas_arquivo": empresas_arquivo,
         "periodo": {"inicio": datas[0] if datas else "", "fim": datas[-1] if datas else ""},
         "totais": {
             "eventos": total_eventos,
@@ -898,8 +993,13 @@ def parse(path: Path) -> dict:
             "fornecedores": sorted(fornecedores_set),
             "usuarios": sorted(usuarios_set),
             "datas": datas,
+            "segmentos": [s for s in SEGMENTOS_COBERTURA if any(e["segmento"] == s for e in cobertura)]
+            or sorted({i.get("segmento") for i in lancamentos if i.get("segmento")}),
             "tipos": [t["id"] for t in [{"id": k, "qtd": tipo_count[k]} for k in ["custo_acima", "custo_abaixo", "venda_acima", "venda_abaixo", "pedido", "outros"] if tipo_count.get(k)]],
         },
+        "empresas": empresas_nro,
+        "empresas_loja": {k: {"nroempresa": v["nroempresa"], "loja": v["loja"], "segmento": v["segmento"]} for k, v in empresas_loja.items()},
+        "cobertura": cobertura,
         "rankings": {
             "lojas": ranking_loja[:15],
             "fornecedores": rank(forn_inc, 12),

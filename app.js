@@ -11,6 +11,23 @@ const TIPO_LABEL = {
   inclusao_nf: "Inclusao de NF",
 };
 
+const SEGMENTO_LABEL = {
+  LOJAS: "Lojas",
+  EMPORIOS: "Emporios",
+  MERCEARIA: "Mercearias",
+  CD: "CD",
+  BARRA: "Barra",
+  AGRO: "Agro",
+};
+
+const SEGMENTO_SHORT = {
+  LOJAS: "Loja",
+  EMPORIOS: "Emporio",
+  MERCEARIA: "Mercearia",
+};
+
+const SEGMENTOS_COBERTURA = ["LOJAS", "EMPORIOS", "MERCEARIA"];
+
 const $ = (id) => document.getElementById(id);
 const dash = "-";
 const fmt = (n) => (n == null || n === "" ? dash : Number(n).toLocaleString("pt-BR"));
@@ -187,6 +204,68 @@ function isLojaFora(loja) {
   return l.startsWith("C001") || l.startsWith("R066");
 }
 
+function segmentoLabel(seg) {
+  return SEGMENTO_LABEL[seg] || seg || dash;
+}
+
+function empresaInfo(item) {
+  const nro = String((item && item.nroempresa) || "").trim();
+  const nroNorm = nro.replace(/^0+/, "") || nro;
+  const loja = String((item && (typeof item === "string" ? item : item.loja)) || "").trim();
+  const map = (DATA && DATA.empresas) || {};
+  const byLoja = (DATA && DATA.empresas_loja) || {};
+  return map[nroNorm] || map[nro] || byLoja[loja] || { nroempresa: nroNorm, loja, segmento: (item && item.segmento) || "" };
+}
+
+function segmentoOf(item) {
+  if (item && item.segmento) return item.segmento;
+  return empresaInfo(item).segmento || "";
+}
+
+function segTag(seg) {
+  if (!seg) return "";
+  const cls = String(seg).toLowerCase();
+  return `<span class="seg-tag seg-${esc(cls)}">${esc(SEGMENTO_SHORT[seg] || segmentoLabel(seg))}</span>`;
+}
+
+function coberturaLista() {
+  const cadastro = (DATA && DATA.cobertura) || [];
+  if (cadastro.length) return cadastro.filter((e) => e.loja && !isLojaFora(e.loja));
+  return ((DATA.filtros && DATA.filtros.lojas) || [])
+    .filter((l) => l && !isLojaFora(l))
+    .map((loja) => ({ loja, nroempresa: "", segmento: segmentoOf({ loja }) || "LOJAS" }));
+}
+
+function lojasDoFiltro() {
+  const seg = ($("f-segmento") && $("f-segmento").value) || "";
+  return ((DATA.filtros && DATA.filtros.lojas) || [])
+    .filter((l) => l && !isLojaFora(l))
+    .filter((l) => !seg || segmentoOf({ loja: l }) === seg);
+}
+
+function fillSelectLojas() {
+  const el = $("f-loja");
+  if (!el) return;
+  const cur = el.value;
+  const lojas = lojasDoFiltro();
+  const groups = { LOJAS: [], EMPORIOS: [], MERCEARIA: [], OUTROS: [] };
+  lojas.forEach((l) => {
+    const s = segmentoOf({ loja: l });
+    (groups[s] || groups.OUTROS).push(l);
+  });
+  const order = SEGMENTOS_COBERTURA.concat(["OUTROS"]);
+  const parts = [`<option value="">Todas as unidades</option>`];
+  const used = order.filter((s) => (groups[s] || []).length);
+  used.forEach((s) => {
+    const label = s === "OUTROS" ? "Outros" : segmentoLabel(s);
+    if (used.length > 1) parts.push(`<optgroup label="${esc(label)}">`);
+    groups[s].forEach((v) => parts.push(`<option value="${esc(v)}">${esc(v)}</option>`));
+    if (used.length > 1) parts.push(`</optgroup>`);
+  });
+  el.innerHTML = parts.join("");
+  el.value = lojas.includes(cur) ? cur : "";
+}
+
 function isForn331(item) {
   const seq = String((item && (item.seqpessoa || item.seq_pessoa)) || "").trim();
   if (seq === "331") return true;
@@ -202,6 +281,7 @@ function filters() {
     loja: $("f-loja").value,
     forn: $("f-forn").value,
     tipo: $("f-tipo").value,
+    segmento: ($("f-segmento") && $("f-segmento").value) || "",
     grupo: "",
     user: "",
   };
@@ -226,6 +306,7 @@ function matchText(item, q) {
     item.serienf,
     item.chave,
     item.loja,
+    item.segmento,
     item.fornecedor,
     item.produto,
     item.produto_codigo,
@@ -251,6 +332,7 @@ function matchBase(item, f) {
   if (f.data && item.data !== f.data) return false;
   if (f.loja && item.loja !== f.loja) return false;
   if (f.forn && item.fornecedor !== f.forn) return false;
+  if (f.segmento && segmentoOf(item) !== f.segmento) return false;
   return matchText(item, f.q);
 }
 
@@ -359,7 +441,7 @@ function renderRankBars(id, items, opts) {
           const val = opts.filterVal(it);
           return `<button type="button" class="rank-bar${hot}" data-filter-key="${esc(key)}" data-filter-val="${esc(val)}" title="${esc(opts.label(it))} - clique para filtrar">
             <span class="pos">${i + 1}</span>
-            <span class="name">${esc(opts.label(it))}</span>
+            <span class="name">${opts.tag ? opts.tag(it) : ""}${esc(opts.label(it))}</span>
             <span class="track"><i style="width:${w}%"></i></span>
             <span class="qty">${opts.fmt(it)}</span>
           </button>`;
@@ -513,19 +595,35 @@ function diaOperacionalCentral() {
   const data = filtrada || datas[datas.length - 1] || "";
   const doDia = rows.filter((r) => r.data === data);
   const central = doDia.filter((r) => r.usuario_eh_central || isCentralCode(r.usuario));
-  const lojas = new Set(central.map((r) => r.loja).filter(Boolean));
-  const universo = (DATA.filtros && DATA.filtros.lojas ? DATA.filtros.lojas : [])
-    .filter((l) => l && !isLojaFora(l));
+  const atendidas = new Set(central.map((r) => r.loja).filter(Boolean));
+  const nfsPorSeg = {};
+  central.forEach((r) => {
+    const s = segmentoOf(r);
+    if (!s) return;
+    nfsPorSeg[s] = (nfsPorSeg[s] || 0) + 1;
+  });
+  const filtroSeg = ($("f-segmento") && $("f-segmento").value) || "";
+  const universoAll = coberturaLista();
+  const universo = universoAll.filter((e) => !filtroSeg || e.segmento === filtroSeg);
+  const grupos = SEGMENTOS_COBERTURA.map((seg) => {
+    const meta = universoAll.filter((e) => e.segmento === seg);
+    if (!meta.length) return null;
+    const ok = meta.filter((e) => atendidas.has(e.loja));
+    const pct = meta.length ? (ok.length / meta.length) * 100 : 0;
+    return { seg, label: segmentoLabel(seg), ok: ok.length, meta: meta.length, pct, nfs: nfsPorSeg[seg] || 0 };
+  }).filter(Boolean);
   const lojasMeta = universo.length;
-  const lojasPct = lojasMeta ? (lojas.size / lojasMeta) * 100 : 0;
+  const lojasOk = universo.filter((e) => atendidas.has(e.loja)).length;
+  const lojasPct = lojasMeta ? (lojasOk / lojasMeta) * 100 : 0;
   return {
     data,
     filtrado: Boolean(filtrada),
     nfs: central.length,
-    lojas: lojas.size,
+    lojas: lojasOk,
     lojasMeta,
     lojasPct,
     totalDia: doDia.length,
+    grupos,
   };
 }
 
@@ -543,9 +641,21 @@ function renderDiaCentral() {
     return;
   }
   const titulo = d.filtrado
-    ? "Meta: atender todas as lojas no dia. Clique para limpar o filtro desta data"
-    : "Meta: atender todas as lojas no dia. Clique para filtrar este dia";
-  el.innerHTML = `<button type="button" class="dia-central-card" data-dia="${esc(d.data)}" title="${esc(titulo)}">
+    ? "Meta: atender lojas e emporios no dia. Clique para limpar o filtro desta data"
+    : "Meta: atender lojas e emporios no dia. Clique para filtrar este dia";
+  const gruposHtml = d.grupos
+    .map((g) => {
+      const on = ($("f-segmento") && $("f-segmento").value) === g.seg ? " is-on" : "";
+      return `<button type="button" class="dia-grupo${on}" data-filter-key="segmento" data-filter-val="${esc(g.seg)}" title="Filtrar ${esc(g.label)}">
+        <span class="lbl">${esc(g.label)}</span>
+        <b style="color:${metaColor(g.pct, 100)}">${fmt(g.ok)} <small>de ${fmt(g.meta)}</small></b>
+        <div class="track"><i style="width:${g.pct}%;background:${metaColor(g.pct, 100)}"></i></div>
+        <div class="sub">${fmt(g.nfs)} NF · ${fmtPct(g.pct)} · meta 100%</div>
+      </button>`;
+    })
+    .join("");
+  el.innerHTML = `<div class="dia-central-wrap">
+    <button type="button" class="dia-central-card" data-dia="${esc(d.data)}" title="${esc(titulo)}">
       <div class="dia-central-when">
         <span class="lbl">${rotuloDiaOperacional(d.data, d.filtrado)}</span>
         <strong>${fmtData(d.data)}</strong>
@@ -556,11 +666,13 @@ function renderDiaCentral() {
         <div class="sub">de ${fmt(d.totalDia)} no dia</div>
       </div>
       <div class="dia-central-stat">
-        <span class="lbl">Lojas atendidas</span>
+        <span class="lbl">Unidades atendidas</span>
         <b style="color:${metaColor(d.lojasPct, 100)}">${fmt(d.lojas)} de ${fmt(d.lojasMeta)}</b>
-        <div class="sub">${fmtPct(d.lojasPct)} · meta 100%</div>
+        <div class="sub">${fmtPct(d.lojasPct)} · lojas + emporios</div>
       </div>
-    </button>`;
+    </button>
+    <div class="dia-grupos">${gruposHtml}</div>
+  </div>`;
 }
 
 function renderKpis() {
@@ -654,6 +766,7 @@ function renderCentral() {
     limit: 10,
     value: (it) => it.nfs,
     label: (it) => it.nome,
+    tag: (it) => segTag(segmentoOf({ loja: it.nome })),
     fmt: (it) => `${fmt(it.nfs)} NF | ${fmt(it.itens)} itens${it.taxa != null ? " | " + fmtPct(it.taxa) : ""}`,
     filterKey: "loja",
     filterVal: (it) => it.nome,
@@ -682,7 +795,7 @@ function renderCentral() {
       return `<div class="team-row${lead ? " lead" : ""}">
         <div><div class="pname">${esc(m.nome)}</div><span class="muted">${esc(m.codigo)}</span></div>
         <div><b>${fmt(m.nfs_lancadas)}</b><span class="muted">NFs</span></div>
-        <div><b>${fmt(m.lojas_atendidas.size)}</b><span class="muted">lojas atendidas</span></div>
+        <div><b>${fmt(m.lojas_atendidas.size)}</b><span class="muted">unidades</span></div>
         <div><b>${fmt(m.itens_aceitos)}</b><span class="muted">itens aceitos</span></div>
         <div><b>${fmt(m.exclusoes_nf + m.exclusoes_produto)}</b><span class="muted">exclusoes</span></div>
       </div>`;
@@ -693,7 +806,7 @@ function renderCentral() {
 function renderIncTable(rows) {
   $("count-inc").textContent = `${rows.length} inconsistencia(s) - clique na linha para a linha do tempo da NF`;
   if (!rows.length) {
-    $("tb-inc").innerHTML = `<tr class="empty"><td colspan="9" class="muted">Nenhum registro com os filtros atuais.</td></tr>`;
+    $("tb-inc").innerHTML = `<tr class="empty"><td colspan="10" class="muted">Nenhum registro com os filtros atuais.</td></tr>`;
     return;
   }
   $("tb-inc").innerHTML = rows
@@ -701,12 +814,13 @@ function renderIncTable(rows) {
       (i) => `<tr class="clickable" data-nf="${esc(i.nf_id)}">
         <td class="num" data-label="Data">${fmtData(i.data)} ${esc(i.hora || "")}</td>
         <td data-label="Loja">${esc(i.loja)}</td>
+        <td data-label="Grupo">${segTag(segmentoOf(i)) || dash}</td>
         <td class="num" data-label="NF">${esc(i.numeronf)}/${esc(i.serienf)}</td>
         <td data-label="Fornecedor">${esc(i.fornecedor)}</td>
         <td data-label="Produto">${esc(i.produto || i.produto_codigo || dash)}</td>
         <td data-label="Tipo">${badge(i.tipo)}</td>
         <td data-label="Aceite">${esc(i.aceite_nome || userLabel(i.aceite_usuario || i.usuario))}</td>
-        <td data-label="Grupo">${esc(grupoLabel(i.aceite_usuario, i.aceite_grupo))}</td>
+        <td data-label="Equipe">${esc(grupoLabel(i.aceite_usuario, i.aceite_grupo))}</td>
         <td data-label="Justificativa">${esc(i.justificativa || dash)}</td>
       </tr>`
     )
@@ -716,7 +830,7 @@ function renderIncTable(rows) {
 function renderOpsTable(rows) {
   $("count-ops").textContent = `${rows.length} evento(s) operacional(is) - exclusao de NF/item`;
   if (!rows.length) {
-    $("tb-ops").innerHTML = `<tr class="empty"><td colspan="10" class="muted">Nenhum registro com os filtros atuais.</td></tr>`;
+    $("tb-ops").innerHTML = `<tr class="empty"><td colspan="11" class="muted">Nenhum registro com os filtros atuais.</td></tr>`;
     return;
   }
   $("tb-ops").innerHTML = rows
@@ -725,6 +839,7 @@ function renderOpsTable(rows) {
       (i) => `<tr class="clickable" data-nf="${esc(i.seqaux)}|${esc(i.chave)}">
         <td class="num" data-label="Data">${fmtData(i.data)} ${esc(i.hora || "")}</td>
         <td data-label="Loja">${esc(i.loja)}</td>
+        <td data-label="Grupo">${segTag(segmentoOf(i)) || dash}</td>
         <td class="num" data-label="NF">${esc(i.numeronf)}/${esc(i.serienf)}</td>
         <td data-label="Fornecedor">${esc(i.fornecedor)}</td>
         <td data-label="Tipo">${badge(i.tipo)}</td>
@@ -732,7 +847,7 @@ function renderOpsTable(rows) {
         <td class="num" data-label="De">${esc(i.valor_antigo || dash)}</td>
         <td class="num" data-label="Para">${esc(i.valor_novo || dash)}</td>
         <td data-label="Pessoa">${esc(i.usuario_nome || userLabel(i.usuario))}</td>
-        <td data-label="Grupo">${esc(grupoLabel(i.usuario, i.usuario_grupo))}</td>
+        <td data-label="Equipe">${esc(grupoLabel(i.usuario, i.usuario_grupo))}</td>
       </tr>`
     )
     .join("");
@@ -761,9 +876,9 @@ function openDrawer(nfId) {
   }
   const first = DATA.inconsistencias.find((i) => i.nf_id === nfId) || DATA.operacional.find((i) => `${i.seqaux}|${i.chave}` === nfId) || (DATA.lancamentos || []).find((i) => i.nf_id === nfId);
   $("d-title").textContent = nf
-    ? `NF ${nf.numeronf}/${nf.serienf} | ${nf.loja}`
+    ? `NF ${nf.numeronf}/${nf.serienf} | ${nf.loja}${nf.segmento || segmentoOf(nf) ? " · " + segmentoLabel(nf.segmento || segmentoOf(nf)) : ""}`
     : first
-      ? `NF ${first.numeronf}/${first.serienf} | ${first.loja}`
+      ? `NF ${first.numeronf}/${first.serienf} | ${first.loja}${segmentoOf(first) ? " · " + segmentoLabel(segmentoOf(first)) : ""}`
       : "Nota";
   $("d-sub").textContent = (nf || first || {}).chave || nfId;
   $("d-tl").innerHTML = evs.length
@@ -798,6 +913,7 @@ function treatedRow(fonte, r, extra) {
       hora: r.hora || "",
       loja: r.loja || "",
       nroempresa: r.nroempresa || "",
+      segmento: r.segmento || segmentoOf(r),
       numeronf: r.numeronf || "",
       serienf: r.serienf || "",
       fornecedor: r.fornecedor || "",
@@ -851,6 +967,7 @@ function exportCsv() {
     "hora",
     "loja",
     "nroempresa",
+    "segmento",
     "numeronf",
     "serienf",
     "fornecedor",
@@ -1165,6 +1282,8 @@ function closeDrawer() {
 function bind() {
   setTodayDate();
   ["q", "f-data", "f-loja", "f-forn", "f-tipo"].forEach((id) => $(id).addEventListener("input", render));
+  const fSeg = $("f-segmento");
+  if (fSeg) fSeg.addEventListener("input", () => { fillSelectLojas(); render(); });
   $("btn-csv").addEventListener("click", exportCsv);
   const home = $("btn-home");
   if (home) home.addEventListener("click", goHome);
@@ -1197,10 +1316,11 @@ function bind() {
     }
     const btn = ev.target.closest("[data-filter-key]");
     if (btn) {
-      const map = { loja: "f-loja", forn: "f-forn", tipo: "f-tipo" };
+      const map = { loja: "f-loja", forn: "f-forn", tipo: "f-tipo", segmento: "f-segmento" };
       const id = map[btn.dataset.filterKey];
       if (id && $(id)) {
         $(id).value = $(id).value === btn.dataset.filterVal ? "" : btn.dataset.filterVal;
+        if (id === "f-segmento") fillSelectLojas();
         render();
       }
       return;
@@ -1226,7 +1346,11 @@ function boot(data) {
   const datas = data.filtros.datas || [];
   const dataLabels = Object.fromEntries(datas.map((d) => [d, fmtData(d)]));
   fillSelect("f-data", datas, "Todas as datas", dataLabels);
-  fillSelect("f-loja", data.filtros.lojas.filter((l) => !isLojaFora(l)), "Todas as lojas");
+  const segs = (data.filtros && data.filtros.segmentos && data.filtros.segmentos.length)
+    ? data.filtros.segmentos
+    : SEGMENTOS_COBERTURA.filter((s) => coberturaLista().some((e) => e.segmento === s));
+  fillSelect("f-segmento", segs, "Todos os grupos", SEGMENTO_LABEL);
+  fillSelectLojas();
   fillSelect("f-forn", (data.filtros.fornecedores || []).filter((f) => !isForn331(f)), "Todos os fornecedores");
   fillSelect("f-tipo", data.filtros.tipos, "Todos os tipos", TIPO_LABEL);
   renderRank("rk-loja", (data.rankings.lojas || []).filter((it) => !isLojaFora(it.nome)), (it) => `${it.nfs_inconsistentes} NF${it.taxa != null ? " | " + it.taxa + "%" : ""}`);

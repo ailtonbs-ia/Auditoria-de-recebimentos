@@ -96,24 +96,25 @@ function Info-Usuario([string]$codigo) {
   $exibir = $(if ($codigo) { $codigo.Trim() } else { "" })
   return @{ codigo = $(if ($n) { $n } else { $exibir }); nome = $exibir; grupo = ""; eh_central = $false; cadastrado = $false }
 }
-function Ler-ListaUsuarios([string]$dir) {
-  $xlsx = @(Get-ChildItem -LiteralPath $dir -Filter "*Usuario*.xlsx" -ErrorAction SilentlyContinue)
-  if (-not $xlsx.Count) { $xlsx = @(Get-ChildItem -LiteralPath $dir -Filter "*.xlsx" -ErrorAction SilentlyContinue) }
-  $mapa = @{}
-  $equipe = New-Object System.Collections.Generic.List[object]
-  if (-not $xlsx.Count) {
-    Write-Host "Lista de usuarios .xlsx nao encontrada; monitoramento segue so com codigos."
-    return @{ mapa = $mapa; equipe = $equipe; arquivo = ""; total = 0 }
-  }
-  $src = $xlsx[0]
-  $tmp = Join-Path $env:TEMP ("lista_usuarios_parse_" + [guid]::NewGuid().ToString("N"))
+function Norm-Segmento([string]$raw) {
+  $t = Fold $raw
+  if ($t -match "^lojas?$") { return "LOJAS" }
+  if ($t -match "^emporios?$" -or $t -match "^emp[oó]rios?$") { return "EMPORIOS" }
+  if ($t -match "^mercearias?$") { return "MERCEARIA" }
+  if ($t -eq "cd") { return "CD" }
+  if ($t -eq "barra") { return "BARRA" }
+  if ($t -eq "agro") { return "AGRO" }
+  return ($(if ($raw) { $raw.Trim().ToUpperInvariant() } else { "" }))
+}
+
+function Read-XlsxRows([string]$srcPath) {
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  $tmp = Join-Path $env:TEMP ("xlsx_parse_" + [guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Path $tmp | Out-Null
+  $rows = New-Object System.Collections.Generic.List[object]
   try {
-    $zip = Join-Path $tmp "lista.zip"
-    Copy-Item -LiteralPath $src.FullName -Destination $zip
-    Expand-Archive -LiteralPath $zip -DestinationPath (Join-Path $tmp "out") -Force
-    $ns = @{ m = "http://schemas.openxmlformats.org/spreadsheetml/2006/main" }
-    $sstPath = Join-Path $tmp "out\xl\sharedStrings.xml"
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($srcPath, $tmp)
+    $sstPath = Join-Path $tmp "xl\sharedStrings.xml"
     $strings = New-Object System.Collections.Generic.List[string]
     if (Test-Path -LiteralPath $sstPath) {
       $sstXml = [xml](Get-Content -LiteralPath $sstPath -Raw -Encoding UTF8)
@@ -122,8 +123,7 @@ function Ler-ListaUsuarios([string]$dir) {
         else { [void]$strings.Add((($si.r | ForEach-Object { $_.t }) -join "")) }
       }
     }
-    $sheetXml = [xml](Get-Content -LiteralPath (Join-Path $tmp "out\xl\worksheets\sheet1.xml") -Raw -Encoding UTF8)
-    $total = 0
+    $sheetXml = [xml](Get-Content -LiteralPath (Join-Path $tmp "xl\worksheets\sheet1.xml") -Raw -Encoding UTF8)
     foreach ($row in $sheetXml.worksheet.sheetData.row) {
       $cells = @{}
       foreach ($c in $row.c) {
@@ -132,30 +132,100 @@ function Ler-ListaUsuarios([string]$dir) {
         if ($c.t -eq "s" -and $v -match "^\d+$") { $v = $strings[[int]$v] }
         $cells[$col] = $v
       }
-      $codigoRaw = $(if ($cells.ContainsKey("B")) { $cells.B } else { "" })
-      $nome = $(if ($cells.ContainsKey("C")) { $cells.C } else { "" })
-      $grupo = $(if ($cells.ContainsKey("D")) { $cells.D } else { "" })
-      $codigo = Norm-Codigo $codigoRaw
-      if (-not $codigo) { continue }
-      if ((Fold $codigoRaw) -eq "usuario" -or (Fold $nome) -eq "nome") { continue }
-      $info = @{
-        codigo = $codigo
-        nome = $(if ($nome) { $nome.Trim() } else { $codigo })
-        grupo = $(if ($grupo) { $grupo.Trim() } else { "" })
-        eh_central = [bool](EhCentralGrupo $grupo)
-        cadastrado = $true
-      }
-      $mapa[$codigo] = $info
-      if ($codigoRaw -and -not $mapa.ContainsKey($codigoRaw.Trim())) { $mapa[$codigoRaw.Trim()] = $info }
-      if ($info.eh_central) { $equipe.Add($info) }
-      $total++
+      $rows.Add($cells)
     }
-    Write-Host ("Usuarios na planilha {0}: {1} | Central: {2}" -f $src.Name, $total, $equipe.Count)
-    return @{ mapa = $mapa; equipe = $equipe; arquivo = $src.Name; total = $total }
   }
   finally {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
   }
+  return $rows
+}
+
+function Ler-ListaUsuarios([string]$dir) {
+  $xlsx = @(Get-ChildItem -LiteralPath $dir -Filter "*Usuario*.xlsx" -ErrorAction SilentlyContinue)
+  $mapa = @{}
+  $equipe = New-Object System.Collections.Generic.List[object]
+  if (-not $xlsx.Count) {
+    Write-Host "Lista de usuarios .xlsx nao encontrada; monitoramento segue so com codigos."
+    return @{ mapa = $mapa; equipe = $equipe; arquivo = ""; total = 0 }
+  }
+  $src = $xlsx[0]
+  $total = 0
+  foreach ($cells in (Read-XlsxRows $src.FullName)) {
+    $codigoRaw = $(if ($cells.ContainsKey("B")) { $cells.B } else { "" })
+    $nome = $(if ($cells.ContainsKey("C")) { $cells.C } else { "" })
+    $grupo = $(if ($cells.ContainsKey("D")) { $cells.D } else { "" })
+    $codigo = Norm-Codigo $codigoRaw
+    if (-not $codigo) { continue }
+    if ((Fold $codigoRaw) -eq "usuario" -or (Fold $nome) -eq "nome") { continue }
+    $info = @{
+      codigo = $codigo
+      nome = $(if ($nome) { $nome.Trim() } else { $codigo })
+      grupo = $(if ($grupo) { $grupo.Trim() } else { "" })
+      eh_central = [bool](EhCentralGrupo $grupo)
+      cadastrado = $true
+    }
+    $mapa[$codigo] = $info
+    if ($codigoRaw -and -not $mapa.ContainsKey($codigoRaw.Trim())) { $mapa[$codigoRaw.Trim()] = $info }
+    if ($info.eh_central) { $equipe.Add($info) }
+    $total++
+  }
+  Write-Host ("Usuarios na planilha {0}: {1} | Central: {2}" -f $src.Name, $total, $equipe.Count)
+  return @{ mapa = $mapa; equipe = $equipe; arquivo = $src.Name; total = $total }
+}
+
+function Ler-ListaEmpresas([string]$dir) {
+  $xlsx = @(Get-ChildItem -LiteralPath $dir -Filter "*Empresa*.xlsx" -ErrorAction SilentlyContinue)
+  $byNro = @{}
+  $byLoja = @{}
+  $cobertura = New-Object System.Collections.Generic.List[object]
+  if (-not $xlsx.Count) {
+    Write-Host "Lista de Empresas.xlsx nao encontrada; cobertura usa so as lojas do lote."
+    return @{ nro = $byNro; loja = $byLoja; cobertura = $cobertura; arquivo = "" }
+  }
+  $src = $xlsx[0]
+  $cobSet = @("LOJAS", "EMPORIOS", "MERCEARIA")
+  foreach ($cells in (Read-XlsxRows $src.FullName)) {
+    $nroRaw = $(if ($cells.ContainsKey("A")) { $cells.A } else { "" })
+    $loja = $(if ($cells.ContainsKey("B")) { [string]$cells.B } else { "" }).Trim()
+    $razao = $(if ($cells.ContainsKey("C")) { [string]$cells.C } else { "" }).Trim()
+    $segRaw = $(if ($cells.ContainsKey("F")) { [string]$cells.F } else { "" })
+    $segmento = Norm-Segmento $segRaw
+    $nro = Norm-Codigo $nroRaw
+    if (-not $nro -and -not $loja) { continue }
+    if ((Fold $nroRaw) -eq "nroempresa" -or (Fold $loja) -eq "nomereduzido") { continue }
+    $info = @{
+      nroempresa = $nro
+      loja = $loja
+      razao = $razao
+      segmento = $segmento
+    }
+    if ($nro) { $byNro[$nro] = $info }
+    if ($loja) { $byLoja[$loja] = $info }
+    if ($cobSet -contains $segmento -and -not (EhLojaFora $loja $nro)) {
+      $cobertura.Add(@{ nroempresa = $nro; loja = $loja; segmento = $segmento })
+    }
+  }
+  $ord = @{ LOJAS = 0; EMPORIOS = 1; MERCEARIA = 2 }
+  $cobertura = @($cobertura | Sort-Object @{ Expression = { $ord[$_.segmento] } }, loja)
+  $nLojas = @($cobertura | Where-Object { $_.segmento -eq "LOJAS" }).Count
+  $nEmp = @($cobertura | Where-Object { $_.segmento -eq "EMPORIOS" }).Count
+  $nMerc = @($cobertura | Where-Object { $_.segmento -eq "MERCEARIA" }).Count
+  Write-Host ("Empresas na planilha {0}: {1} | Lojas {2} | Emporios {3} | Mercearias {4}" -f $src.Name, $byNro.Count, $nLojas, $nEmp, $nMerc)
+  return @{ nro = $byNro; loja = $byLoja; cobertura = $cobertura; arquivo = $src.Name }
+}
+
+function Info-Empresa([string]$nro, [string]$loja) {
+  $n = Norm-Codigo $nro
+  if ($n -and $script:empresasNro.ContainsKey($n)) { return $script:empresasNro[$n] }
+  $nome = $(if ($loja) { $loja.Trim() } else { "" })
+  if ($nome -and $script:empresasLoja.ContainsKey($nome)) { return $script:empresasLoja[$nome] }
+  return @{ nroempresa = $(if ($n) { $n } else { $nro }); loja = $nome; razao = ""; segmento = "" }
+}
+
+function Carimbar-Empresa($rec) {
+  $emp = Info-Empresa $rec.nroempresa $rec.loja
+  $rec.segmento = $(if ($emp.segmento) { $emp.segmento } else { "" })
 }
 
 function Test-AuditTxt([string]$path) {
@@ -291,6 +361,9 @@ $txt = Get-Item -LiteralPath $destTxt
 $script:usuariosMap = @{}
 $listaUsuarios = Ler-ListaUsuarios $base
 $script:usuariosMap = $listaUsuarios.mapa
+$listaEmpresas = Ler-ListaEmpresas $base
+$script:empresasNro = $listaEmpresas.nro
+$script:empresasLoja = $listaEmpresas.loja
 
 $nfs = @{}
 $produtosNf = @{}
@@ -465,6 +538,10 @@ foreach ($e in $lancamentos) {
   $e.usuario_grupo = $u.grupo
   $e.usuario_eh_central = $u.eh_central
 }
+foreach ($item in $inconsistencias) { Carimbar-Empresa $item }
+foreach ($e in $operacional) { Carimbar-Empresa $e }
+foreach ($e in $lancamentos) { Carimbar-Empresa $e }
+foreach ($h in $nfs.Values) { Carimbar-Empresa $h }
 
 $nfInc = New-Object "System.Collections.Generic.HashSet[string]"
 foreach ($i in $inconsistencias) { [void]$nfInc.Add($i.nf_id) }
@@ -541,7 +618,7 @@ foreach ($key in ($nfInc | Sort-Object)) {
   $hh = $nfs[$key]
   $itens = @($inconsistencias | Where-Object { $_.nf_id -eq $key })
   $tipos = @($itens.tipo | Select-Object -Unique | Sort-Object)
-  $nfsResumo.Add(@{ id=$key; seqaux=$hh.seqaux; loja=$hh.loja; nroempresa=$hh.nroempresa; numeronf=$hh.numeronf; serienf=$hh.serienf; fornecedor=$hh.fornecedor; chave=$hh.chave; qtd_itens=$itens.Count; tipos=$tipos; aceite_usuario=$itens[0].aceite_usuario; aceite_nome=$itens[0].aceite_nome; aceite_grupo=$itens[0].aceite_grupo; aceite_eh_central=$itens[0].aceite_eh_central; justificativa=$itens[0].justificativa; status=$itens[0].status; iso=$itens[0].iso; data=$itens[0].data })
+  $nfsResumo.Add(@{ id=$key; seqaux=$hh.seqaux; loja=$hh.loja; nroempresa=$hh.nroempresa; numeronf=$hh.numeronf; serienf=$hh.serienf; fornecedor=$hh.fornecedor; chave=$hh.chave; qtd_itens=$itens.Count; tipos=$tipos; aceite_usuario=$itens[0].aceite_usuario; aceite_nome=$itens[0].aceite_nome; aceite_grupo=$itens[0].aceite_grupo; aceite_eh_central=$itens[0].aceite_eh_central; segmento=$(if ($hh.segmento) { $hh.segmento } elseif ($itens.Count) { $itens[0].segmento } else { "" }); justificativa=$itens[0].justificativa; status=$itens[0].status; iso=$itens[0].iso; data=$itens[0].data })
 }
 
 $tipoIds = @("custo_acima","custo_abaixo","venda_acima","venda_abaixo","pedido","outros") | Where-Object { $tipoCount.ContainsKey($_) }
@@ -575,10 +652,26 @@ foreach ($m in $listaUsuarios.equipe) {
   $equipeOut.Add(@{ codigo=$m.codigo; nome=$m.nome; grupo=$m.grupo; eh_central=$true })
 }
 
+$segFiltros = New-Object System.Collections.Generic.List[string]
+foreach ($s in @("LOJAS", "EMPORIOS", "MERCEARIA")) {
+  if (@($listaEmpresas.cobertura | Where-Object { $_.segmento -eq $s }).Count) { $segFiltros.Add($s) }
+}
+if (-not $segFiltros.Count) {
+  foreach ($s in ($lancamentos | ForEach-Object { $_.segmento } | Where-Object { $_ } | Select-Object -Unique | Sort-Object)) {
+    $segFiltros.Add($s)
+  }
+}
+$empresasLojaOut = @{}
+foreach ($k in $script:empresasLoja.Keys) {
+  $v = $script:empresasLoja[$k]
+  $empresasLojaOut[$k] = @{ nroempresa = $v.nroempresa; loja = $v.loja; segmento = $v.segmento }
+}
+
 $payload = @{
   gerado_em = (Get-Date).ToString("yyyy-MM-ddTHH:mm:ss")
   arquivo = $(if ($nLotes) { "{0} ({1} lotes)" -f $txt.Name, $nLotes } else { $txt.Name })
   usuarios_arquivo = $listaUsuarios.arquivo
+  empresas_arquivo = $listaEmpresas.arquivo
   periodo = @{ inicio = $(if ($datas) { $datas[0] } else { "" }); fim = $(if ($datas) { $datas[-1] } else { "" }) }
   totais = @{
     eventos = $totalEventos
@@ -601,8 +694,12 @@ $payload = @{
     fornecedores = @($fornSet | Sort-Object)
     usuarios = @($userSet | Sort-Object)
     datas = $datas
+    segmentos = $segFiltros
     tipos = $tipoIds
   }
+  empresas = $script:empresasNro
+  empresas_loja = $empresasLojaOut
+  cobertura = $listaEmpresas.cobertura
   rankings = @{
     lojas = $rankingLoja
     fornecedores = Rank $fornInc 12
