@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Fribal | Central de Recebimentos de Notas</title>
   <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="recebimentos.css" />
 </head>
 <body>
   <svg class="fluxo-sprite" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -50,8 +51,8 @@
     <button class="tab active" data-tab="central">Produtividade</button>
     <button class="tab" data-tab="inc">Inconsistencias</button>
     <button class="tab" data-tab="ops">Operacional</button>
+    <button class="tab" data-tab="receb">Recebimentos</button>
     <button class="tab" data-tab="fluxo">Fluxo</button>
-    <span class="periodo" id="periodo" hidden></span>
   </nav>
 
   <main class="wrap">
@@ -174,6 +175,137 @@
           </thead>
           <tbody id="tb-ops"></tbody>
         </table>
+      </div>
+    </section>
+
+        <section id="view-receb" class="hidden">
+      <div class="page">
+        <header class="header" hidden>
+          <div class="header-actions">
+            <span class="status-pill" id="rb-loadStatus" hidden>Carregando…</span>
+            <button type="button" class="btn" id="rb-btnReload" hidden>Recarregar</button>
+            <button type="button" class="btn primary" id="rb-btnPickFile" hidden>Carregar arquivo</button>
+            <input type="file" id="rb-fileInput" accept=".txt,.csv,text/plain" />
+          </div>
+        </header>
+
+        <div class="wrap">
+          <div class="load-banner" id="rb-loadBanner">
+            <div>
+              <strong>Não foi possível ler a Base automaticamente.</strong>
+              <div class="caption" style="margin-top:4px">
+                Abra via servidor local ou selecione
+                <code>Bases/Base/Painel de controle de recebimento.txt</code>.
+              </div>
+            </div>
+            <button type="button" class="ghost" id="rb-btnPickFileBanner">Selecionar arquivo</button>
+          </div>
+
+          <article class="card sec" id="rb-filtros">
+            <div class="sec-head">
+              <div class="lbl">Filtros</div>
+              <button type="button" class="ghost" id="rb-btnClearFilters">Limpar filtros</button>
+            </div>
+            <div class="filters">
+              <div class="field">
+                <label for="rb-fDataDe">Entrada de</label>
+                <div class="date-field">
+                  <input type="text" id="rb-fDataDe" class="date-br" placeholder="dd/mm/yyyy" readonly autocomplete="off" />
+                  <button type="button" class="date-picker-btn" aria-label="Abrir calendário" title="Selecionar data">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M7 3v3M17 3v3M4 8h16M5 5h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="field">
+                <label for="rb-fDataAte">Entrada até</label>
+                <div class="date-field">
+                  <input type="text" id="rb-fDataAte" class="date-br" placeholder="dd/mm/yyyy" readonly autocomplete="off" />
+                  <button type="button" class="date-picker-btn" aria-label="Abrir calendário" title="Selecionar data">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M7 3v3M17 3v3M4 8h16M5 5h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="field">
+                <label for="rb-fSituacao">Situação</label>
+                <select id="rb-fSituacao"><option value="">Todas</option></select>
+              </div>
+              <div class="field">
+                <label for="rb-fGrupo">Grupo</label>
+                <select id="rb-fGrupo"><option value="">Todos</option></select>
+              </div>
+              <div class="field">
+                <label for="rb-fEmpresa">Empresa / loja</label>
+                <select id="rb-fEmpresa"><option value="">Todas</option></select>
+              </div>
+            </div>
+          </article>
+
+          <div class="kpis" id="rb-kpiGrid"></div>
+          <p class="muted count-line" id="rb-kpiCaption">Aguardando dados…</p>
+
+          <div class="grid-2 grid-paired">
+            <article class="card sec" id="rb-funil">
+              <div class="lbl">Funil operacional</div>
+              <p class="hint">Distribuição por situação</p>
+              <div class="bars" id="rb-funilBars"></div>
+            </article>
+            <article class="card sec" id="rb-ritmo">
+              <div class="lbl">Ritmo diário</div>
+              <p class="hint">Por data de entrada</p>
+              <div class="table-scroll" id="rb-ritmoTableWrap"></div>
+            </article>
+          </div>
+
+          <div class="grid-2">
+            <article class="card sec" id="rb-lojas">
+              <div class="lbl">Top lojas</div>
+              <p class="hint">Maior valor no recorte</p>
+              <div id="rb-lojasTableWrap"></div>
+            </article>
+            <article class="card sec" id="rb-fornecedores">
+              <div class="lbl">Top fornecedores</div>
+              <p class="hint">Maior valor no recorte</p>
+              <div id="rb-fornecedoresTableWrap"></div>
+            </article>
+          </div>
+
+          <div class="grid-2 grid-paired">
+            <article class="card sec" id="rb-maiores">
+              <div class="lbl">Maiores notas</div>
+              <p class="hint">Top 10 por valor</p>
+              <div id="rb-maioresTableWrap"></div>
+            </article>
+            <article class="card sec" id="rb-cgo">
+              <div class="lbl">Top CGO</div>
+              <p class="hint">Maiores volumes</p>
+              <div id="rb-cgoTableWrap"></div>
+            </article>
+          </div>
+
+          <article class="card sec" id="rb-qualidade">
+            <div class="lbl">Qualidade</div>
+            <p class="hint">Alertas de cadastro e atraso</p>
+            <div class="chips" id="rb-qualidadeChips"></div>
+          </article>
+
+          <article class="card sec" id="rb-detalhe">
+            <div class="sec-head">
+              <div class="sec-head-copy">
+                <div class="lbl">Notas filtradas</div>
+                <p class="caption" id="rb-tableCaption">—</p>
+              </div>
+              <button type="button" class="ghost" id="rb-btnExportExcel" disabled title="Baixar todas as notas do filtro atual para abrir no Excel">Exportar Excel</button>
+            </div>
+            <div class="table-scroll" id="rb-detailTableWrap"></div>
+            <div class="pager">
+              <div id="rb-pagerInfo">—</div>
+              <div class="pager-actions">
+                <button type="button" class="ghost" id="rb-btnPrevPage">Anterior</button>
+                <button type="button" class="ghost" id="rb-btnNextPage">Próxima</button>
+              </div>
+            </div>
+          </article>
+        </div>
       </div>
     </section>
 
@@ -350,5 +482,6 @@
 
   <script src="dados.js" charset="utf-8"></script>
   <script src="app.js" charset="utf-8"></script>
+  <script src="recebimentos.js" charset="utf-8"></script>
 </body>
 </html>

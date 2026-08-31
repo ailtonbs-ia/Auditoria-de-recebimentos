@@ -88,17 +88,6 @@ function setTodayDate() {
   if (el) el.textContent = todayLabel();
 }
 
-function fmtPeriodo(inicio, fim) {
-  const a = String(inicio || "").split("-");
-  const b = String(fim || "").split("-");
-  if (a.length < 3 && b.length < 3) return "";
-  if (a.length < 3) return `Dados de ${fmtData(fim)}`;
-  if (b.length < 3) return `Dados de ${fmtData(inicio)}`;
-  if (inicio === fim) return `Dados de ${fmtData(fim)}`;
-  if (a[0] === b[0]) return `Dados de ${a[2]}/${a[1]} a ${b[2]}/${b[1]}/${b[0]}`;
-  return `Dados de ${fmtData(inicio)} a ${fmtData(fim)}`;
-}
-
 function fmtDateTime(iso) {
   const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
   if (!m) return "";
@@ -1269,19 +1258,25 @@ function setFluxoRunning(on) {
 
 function setTab(tab) {
   TAB = tab;
+  const standalone = tab === "fluxo" || tab === "receb";
   document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   $("view-central").classList.toggle("hidden", tab !== "central");
   $("view-inc").classList.toggle("hidden", tab !== "inc");
   $("view-ops").classList.toggle("hidden", tab !== "ops");
+  $("view-receb").classList.toggle("hidden", tab !== "receb");
   $("view-fluxo").classList.toggle("hidden", tab !== "fluxo");
-  $("filters").classList.toggle("hidden", tab === "fluxo");
-  $("kpis").classList.toggle("hidden", tab === "fluxo");
+  $("filters").classList.toggle("hidden", standalone);
+  $("kpis").classList.toggle("hidden", standalone);
+  document.body.classList.toggle("tab-receb", tab === "receb");
   const diaEl = $("dia-central");
   if (diaEl) diaEl.classList.toggle("hidden", tab !== "central");
-  if (tab === "fluxo") {
+  if (standalone) {
     $("headline").className = "headline hidden";
     $("headline").textContent = "";
-    setFluxoRunning(true);
+    setFluxoRunning(tab === "fluxo");
+    if (tab === "receb" && typeof window.initRecebimentosDash === "function") {
+      window.initRecebimentosDash();
+    }
     return;
   }
   setFluxoRunning(false);
@@ -1299,7 +1294,7 @@ function goHome() {
 }
 
 function render() {
-  if (!DATA || TAB === "fluxo") return;
+  if (!DATA || TAB === "fluxo" || TAB === "receb") return;
   renderDiaCentral();
   renderKpis();
   if (TAB === "central") renderCentral();
@@ -1370,14 +1365,7 @@ function boot(data) {
   (DATA.inconsistencias || []).sort((a, b) => String(b.iso || "").localeCompare(String(a.iso || "")));
   (DATA.operacional || []).sort((a, b) => String(b.iso || "").localeCompare(String(a.iso || "")));
   (DATA.nfs || []).sort((a, b) => String(b.iso || "").localeCompare(String(a.iso || "")));
-  const p = data.periodo || {};
   $("meta").textContent = metaLabel(data);
-  const periodoEl = $("periodo");
-  const periodoTxt = fmtPeriodo(p.inicio, p.fim);
-  if (periodoEl) {
-    periodoEl.hidden = !periodoTxt;
-    periodoEl.textContent = periodoTxt;
-  }
   const datas = data.filtros.datas || [];
   const dataLabels = Object.fromEntries(datas.map((d) => [d, fmtData(d)]));
   fillSelect("f-data", datas, "Todas as datas", dataLabels);
