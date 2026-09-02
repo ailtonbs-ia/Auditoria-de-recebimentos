@@ -35,6 +35,12 @@ TXT_CANDIDATES = [
 ]
 OUT_JSON = BASE / "dados.json"
 OUT_JS = BASE / "dados.js"
+PAINEL_DEST = BASES_DIR / "Painel de controle de recebimento.txt"
+PAINEL_HEADER = (
+    "NUMERO_NF;SERIE;EMPRESA;FORNECEDOR;DATA_EMISSAO;DATA_ENTRADA;CGO;"
+    "VALOR_TOTAL;SITUACAO_;SITUACAO;SEQNOTAFISCAL;SEQAUXNOTAFISCAL;"
+    "SITUACAO_CONFERENCIA;USUARIO_CONFERENCIA;CHAVE_ACESSO"
+)
 
 COLS = [
     "seqaux",
@@ -340,6 +346,105 @@ def consolidar_base() -> tuple[Path, int]:
     print(
         f"Base 0: {len(ordered)} linhas unicas de {len(lotes)} lote(s) "
         f"({lidos} lidas, {duplicados} duplicatas ignoradas) -> {dest.name}"
+    )
+    return dest, len(lotes)
+
+
+def is_painel_txt(path: Path) -> bool:
+    header = _first_line(path).strip().upper().replace("\t", ";")
+    return header.startswith("NUMERO_NF")
+
+
+def split_painel_row(line: str, delim: str) -> list[str] | None:
+    parts = line.rstrip("\r\n").split(delim)
+    if len(parts) < 15:
+        return None
+    if len(parts) > 15:
+        parts = parts[:14] + [delim.join(parts[14:])]
+    return parts
+
+
+def painel_row_key(parts: list[str]) -> str:
+    def g(i: int) -> str:
+        return parts[i].strip() if i < len(parts) else ""
+
+    chave = g(14)
+    if chave:
+        return chave
+    seqaux = g(11)
+    if seqaux:
+        return f"aux:{seqaux}"
+    return f"nf:{g(0)}|{g(1)}|{g(2)}"
+
+
+def listar_lotes_painel() -> list[Path]:
+    dest = PAINEL_DEST
+    dest_res = dest.resolve() if dest.exists() else None
+    lotes: list[Path] = []
+    seen: set[Path] = set()
+    if dest.exists() and is_painel_txt(dest):
+        lotes.append(dest)
+        seen.add(dest.resolve())
+    for pasta in pastas_lotes():
+        for path in sorted(pasta.glob("*Painel*.txt"), key=lambda p: p.name.lower()):
+            res = path.resolve()
+            if dest_res and res == dest_res:
+                continue
+            if res in seen:
+                continue
+            if is_painel_txt(path):
+                lotes.append(path)
+                seen.add(res)
+    return lotes
+
+
+def consolidar_painel() -> tuple[Path, int]:
+    """Une TXTs do painel de recebimento em Painel de controle de recebimento.txt."""
+    dest = PAINEL_DEST
+    lotes = listar_lotes_painel()
+    if not lotes:
+        print("Nenhum TXT de painel (cabecalho NUMERO_NF) na pasta Bases.")
+        return dest, 0
+
+    ordered: dict[str, list[str]] = {}
+    order: list[str] = []
+    lidos = 0
+    atualizados = 0
+    for path in lotes:
+        header = _first_line(path)
+        delim = sniff_delim(header)
+        with path.open("r", encoding="cp1252", errors="replace", newline="") as fh:
+            first = True
+            for line in fh:
+                if first:
+                    first = False
+                    continue
+                if not line.strip():
+                    continue
+                parts = split_painel_row(line, delim)
+                if not parts:
+                    continue
+                if parts[0].strip().upper() == "NUMERO_NF":
+                    continue
+                lidos += 1
+                key = painel_row_key(parts)
+                if key in ordered:
+                    ordered[key] = parts
+                    atualizados += 1
+                    continue
+                ordered[key] = parts
+                order.append(key)
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(dest.suffix + ".tmp")
+    with tmp.open("w", encoding="cp1252", errors="replace", newline="\r\n") as out:
+        out.write(PAINEL_HEADER + "\n")
+        for key in order:
+            out.write(";".join(ordered[key]) + "\n")
+    os.replace(tmp, dest)
+    print(
+        f"Painel: {len(ordered)} notas unicas de {len(lotes)} arquivo(s) "
+        f"({lidos} lidas, {atualizados} atualizadas) -> {dest.name}"
     )
     return dest, len(lotes)
 
@@ -1058,6 +1163,7 @@ def main() -> int:
     if len(sys.argv) > 1:
         path = Path(sys.argv[1]).resolve()
     else:
+        consolidar_painel()
         path, n_lotes = consolidar_base()
     print(f"Lendo {path} ...")
     payload = parse(path)

@@ -184,33 +184,52 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     return false;
   }
 
+  function shiftMonth(y, m, delta) {
+    var nm = m + delta;
+    var ny = y;
+    while (nm < 1) {
+      nm += 12;
+      ny -= 1;
+    }
+    while (nm > 12) {
+      nm -= 12;
+      ny += 1;
+    }
+    return { y: ny, m: nm };
+  }
+
+  function monthIntersectsRange(y, m, minD, maxD) {
+    var lastDay = new Date(y, m, 0).getDate();
+    var start = isoFromYmd(y, m, 1);
+    var end = isoFromYmd(y, m, lastDay);
+    if (minD && end < minD) return false;
+    if (maxD && start > maxD) return false;
+    return true;
+  }
+
   function ensureCalPopover() {
     if (calPopover) return calPopover;
     calPopover = document.createElement("div");
     calPopover.id = "rb-date-popover";
     calPopover.className = "date-popover hidden";
     document.body.appendChild(calPopover);
+    calPopover.addEventListener("mousedown", function (e) {
+      e.stopPropagation();
+    });
     calPopover.addEventListener("click", function (e) {
+      e.stopPropagation();
       var btn = e.target.closest("[data-cal-action]");
-      if (!btn || !calAnchor) return;
+      if (!btn || !calAnchor || btn.disabled) return;
       var minD = calAnchor.dataset.minDate || "";
       var maxD = calAnchor.dataset.maxDate || "";
       var action = btn.getAttribute("data-cal-action");
       if (action === "prev") {
-        calView.m -= 1;
-        if (calView.m < 1) {
-          calView.m = 12;
-          calView.y -= 1;
-        }
+        calView = shiftMonth(calView.y, calView.m, -1);
         renderCalPopover(minD, maxD);
         return;
       }
       if (action === "next") {
-        calView.m += 1;
-        if (calView.m > 12) {
-          calView.m = 1;
-          calView.y += 1;
-        }
+        calView = shiftMonth(calView.y, calView.m, 1);
         renderCalPopover(minD, maxD);
         return;
       }
@@ -222,8 +241,9 @@ window.initRecebimentosDash = function initRecebimentosDash() {
         applyFilters();
       }
     });
-    document.addEventListener("click", function (e) {
+    document.addEventListener("mousedown", function (e) {
       if (!calPopover || calPopover.classList.contains("hidden") || !calAnchor) return;
+      if (e.target && e.target.isConnected === false) return;
       if (calPopover.contains(e.target)) return;
       if (calAnchor.contains(e.target)) return;
       if (calAnchor.parentElement && calAnchor.parentElement.contains(e.target)) return;
@@ -241,6 +261,10 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     var first = new Date(calView.y, calView.m - 1, 1);
     var startWeekday = first.getDay();
     var daysInMonth = new Date(calView.y, calView.m, 0).getDate();
+    var prev = shiftMonth(calView.y, calView.m, -1);
+    var next = shiftMonth(calView.y, calView.m, 1);
+    var prevOk = monthIntersectsRange(prev.y, prev.m, minD, maxD);
+    var nextOk = monthIntersectsRange(next.y, next.m, minD, maxD);
     var cells = [];
     var i;
     for (i = 0; i < startWeekday; i += 1) cells.push(null);
@@ -249,9 +273,13 @@ window.initRecebimentosDash = function initRecebimentosDash() {
 
     var html =
       '<div class="cal-head">' +
-      '<button type="button" class="cal-nav" data-cal-action="prev" aria-label="Mês anterior">‹</button>' +
+      '<button type="button" class="cal-nav" data-cal-action="prev" aria-label="Mês anterior"' +
+      (prevOk ? "" : " disabled") +
+      ">‹</button>" +
       '<div class="cal-title">' + esc(CAL_MONTHS[calView.m - 1]) + " " + calView.y + "</div>" +
-      '<button type="button" class="cal-nav" data-cal-action="next" aria-label="Próximo mês">›</button>' +
+      '<button type="button" class="cal-nav" data-cal-action="next" aria-label="Próximo mês"' +
+      (nextOk ? "" : " disabled") +
+      ">›</button>" +
       "</div>" +
       '<div class="cal-weekdays">' +
       CAL_WEEK.map(function (w) { return "<span>" + w + "</span>"; }).join("") +
@@ -295,14 +323,14 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     var minD = textEl.dataset.minDate || "";
     var maxD = textEl.dataset.maxDate || "";
     var selectedIso = brDateToIso(textEl.value);
-    if (selectedIso) {
-      var p = parseIsoParts(selectedIso);
+    var startIso = selectedIso;
+    if (!startIso) {
+      startIso = textEl === els.fDataAte ? maxD || minD : minD || maxD;
+    }
+    var p = parseIsoParts(startIso);
+    if (p) {
       calView.y = p.y;
       calView.m = p.m;
-    } else if (minD) {
-      var pMin = parseIsoParts(minD);
-      calView.y = pMin.y;
-      calView.m = pMin.m;
     } else {
       var now = new Date();
       calView.y = now.getFullYear();

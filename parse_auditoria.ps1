@@ -10,7 +10,9 @@ if (-not (Test-Path -LiteralPath $basesDir -PathType Container)) {
   else { $basesDir = $base }
 }
 $destTxt = Join-Path $basesDir "auditoria central.txt"
+$destPainel = Join-Path $basesDir "Painel de controle de recebimento.txt"
 $auditHeader = "SEQAUXNOTAFISCAL;NROEMPRESA;NOMEREDUZIDO;NUMERONF;SERIENF;SEQPESSOA;NOMEPESSOA;TIPNOTAFISCAL;OPERACAO;PRODUTO;DIASPRAZO;DESCGENERICA;VALORANTIGO;VALORNOVO;DTAHORALTERACAO;USUALTERACAO;TERMINALUSUALTERA;APPORIGEM;VERSAOSISTEMA;NFECHAVEACESSO"
+$painelHeader = "NUMERO_NF;SERIE;EMPRESA;FORNECEDOR;DATA_EMISSAO;DATA_ENTRADA;CGO;VALOR_TOTAL;SITUACAO_;SITUACAO;SEQNOTAFISCAL;SEQAUXNOTAFISCAL;SITUACAO_CONFERENCIA;USUARIO_CONFERENCIA;CHAVE_ACESSO"
 
 function Fold([string]$s) {
   if ([string]::IsNullOrEmpty($s)) { return "" }
@@ -368,6 +370,111 @@ function Consolidate-Base {
   Write-Host ("Base 0: {0} linhas unicas de {1} lote(s) ({2} lidas, {3} duplicatas ignoradas) -> {4}" -f $order.Count, $lotes.Count, $lidos, $dups, (Split-Path -Leaf $destTxt))
   return $lotes.Count
 }
+
+function Test-PainelTxt([string]$path) {
+  $sr = New-Object System.IO.StreamReader($path, $enc)
+  try { $line = $sr.ReadLine() } finally { $sr.Close() }
+  if (-not $line) { return $false }
+  $n = $line.Trim().ToUpperInvariant().Replace("`t", ";")
+  return $n.StartsWith("NUMERO_NF")
+}
+
+function Split-PainelRow([string]$line, [string]$delim) {
+  $parts = $line.Split($delim)
+  if ($parts.Length -lt 15) { return $null }
+  if ($parts.Length -gt 15) {
+    $tail = ($parts[14..($parts.Length - 1)] -join $delim)
+    $parts = @($parts[0..13]) + @($tail)
+  }
+  return $parts
+}
+
+function Get-PainelRowKey([string[]]$parts) {
+  $chave = $(if ($parts.Length -gt 14 -and $null -ne $parts[14]) { $parts[14].Trim() } else { "" })
+  if ($chave) { return $chave }
+  $seqaux = $(if ($parts.Length -gt 11 -and $null -ne $parts[11]) { $parts[11].Trim() } else { "" })
+  if ($seqaux) { return "aux:$seqaux" }
+  $nf = $(if ($parts.Length -gt 0) { $parts[0].Trim() } else { "" })
+  $serie = $(if ($parts.Length -gt 1) { $parts[1].Trim() } else { "" })
+  $emp = $(if ($parts.Length -gt 2) { $parts[2].Trim() } else { "" })
+  return "nf:$nf|$serie|$emp"
+}
+
+function Get-PainelLotes {
+  $list = New-Object System.Collections.Generic.List[string]
+  if ((Test-Path -LiteralPath $destPainel) -and (Test-PainelTxt $destPainel)) {
+    $list.Add($destPainel)
+  }
+  $destFull = $null
+  if (Test-Path -LiteralPath $destPainel) { $destFull = [IO.Path]::GetFullPath($destPainel) }
+  $seen = New-Object "System.Collections.Generic.HashSet[string]"
+  foreach ($item in $list) { [void]$seen.Add([IO.Path]::GetFullPath($item)) }
+  foreach ($pasta in @($basesDir, $base)) {
+    if (-not (Test-Path -LiteralPath $pasta -PathType Container)) { continue }
+    Get-ChildItem -LiteralPath $pasta -Filter "*Painel*.txt" | Sort-Object Name | ForEach-Object {
+      $full = [IO.Path]::GetFullPath($_.FullName)
+      if ($destFull -and ($full -eq $destFull)) { return }
+      if ($seen.Contains($full)) { return }
+      if (Test-PainelTxt $full) {
+        $list.Add($full)
+        [void]$seen.Add($full)
+      }
+    }
+  }
+  return $list
+}
+
+function Consolidate-Painel {
+  $lotes = @(Get-PainelLotes)
+  if (-not $lotes.Count) {
+    Write-Host "Nenhum TXT de painel (cabecalho NUMERO_NF) na pasta Bases."
+    return 0
+  }
+  $map = New-Object "System.Collections.Generic.Dictionary[string,string[]]"
+  $order = New-Object System.Collections.Generic.List[string]
+  $lidos = 0
+  $atualizados = 0
+  foreach ($path in $lotes) {
+    $sr = New-Object System.IO.StreamReader($path, $enc)
+    try {
+      $header = $sr.ReadLine()
+      $delim = Get-AuditDelim $header
+      while ($null -ne ($line = $sr.ReadLine())) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        $parts = Split-PainelRow $line $delim
+        if ($null -eq $parts) { continue }
+        if ($parts[0].Trim().ToUpperInvariant() -eq "NUMERO_NF") { continue }
+        $lidos++
+        $key = Get-PainelRowKey $parts
+        if ($map.ContainsKey($key)) {
+          $map[$key] = $parts
+          $atualizados++
+          continue
+        }
+        $map[$key] = $parts
+        $order.Add($key)
+      }
+    }
+    finally { $sr.Close() }
+  }
+  $tmp = "$destPainel.tmp"
+  $sw = New-Object System.IO.StreamWriter($tmp, $false, $enc)
+  try {
+    $sw.WriteLine($painelHeader)
+    foreach ($k in $order) {
+      $sw.WriteLine(($map[$k] -join ";"))
+    }
+  }
+  finally { $sw.Close() }
+  Move-Item -LiteralPath $tmp -Destination $destPainel -Force
+  Write-Host ("Painel: {0} notas unicas de {1} arquivo(s) ({2} lidas, {3} atualizadas) -> {4}" -f $order.Count, $lotes.Count, $lidos, $atualizados, (Split-Path -Leaf $destPainel))
+  return $lotes.Count
+}
+
+$painelOnly = $false
+foreach ($a in $args) { if ("$a" -eq "-PainelOnly") { $painelOnly = $true } }
+[void](Consolidate-Painel)
+if ($painelOnly) { exit 0 }
 
 $nLotes = Consolidate-Base
 $txt = Get-Item -LiteralPath $destTxt

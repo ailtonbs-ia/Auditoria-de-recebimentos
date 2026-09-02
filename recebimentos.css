@@ -225,7 +225,12 @@
   line-height: 1;
 }
 
-#rb-date-popover .cal-nav:hover {
+#rb-date-popover .cal-nav:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+#rb-date-popover .cal-nav:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--accent);
 }
