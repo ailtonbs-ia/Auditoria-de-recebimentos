@@ -16,7 +16,20 @@ from datetime import datetime
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
+
+
+def pasta_bases() -> Path:
+    for name in ("Bases", "BASES"):
+        pasta = BASE / name
+        if pasta.is_dir():
+            return pasta
+    return BASE
+
+
+BASES_DIR = pasta_bases()
 TXT_CANDIDATES = [
+    BASES_DIR / "auditoria central.txt",
+    BASES_DIR / "auditoria_central.txt",
     BASE / "auditoria central.txt",
     BASE / "auditoria_central.txt",
 ]
@@ -159,10 +172,18 @@ def find_txt() -> Path:
     for path in TXT_CANDIDATES:
         if path.exists():
             return path
-    extras = sorted(BASE.glob("*.txt"))
+    extras: list[Path] = []
+    seen: set[Path] = set()
+    for pasta in pastas_lotes():
+        for path in sorted(pasta.glob("*.txt"), key=lambda p: p.name.lower()):
+            res = path.resolve()
+            if res in seen:
+                continue
+            seen.add(res)
+            extras.append(path)
     if extras:
         return extras[0]
-    raise FileNotFoundError("Nenhum arquivo .txt encontrado na pasta.")
+    raise FileNotFoundError("Nenhum arquivo .txt encontrado na pasta Bases.")
 
 
 AUDIT_HEADER = (
@@ -226,16 +247,32 @@ def row_melhor(atual: list[str], novo: list[str]) -> bool:
 
 
 def pastas_lotes() -> list[Path]:
-    dirs = [BASE]
-    seen = {BASE.resolve()}
-    for name in ("Bases", "BASES"):
-        pasta = BASE / name
-        if pasta.is_dir():
-            res = pasta.resolve()
-            if res not in seen:
-                seen.add(res)
-                dirs.append(pasta)
+    dirs: list[Path] = []
+    seen: set[Path] = set()
+    for pasta in (BASES_DIR, BASE):
+        if not pasta.is_dir():
+            continue
+        res = pasta.resolve()
+        if res not in seen:
+            seen.add(res)
+            dirs.append(pasta)
     return dirs
+
+
+def find_xlsx(pattern: str) -> Path | None:
+    seen: set[Path] = set()
+    found: list[Path] = []
+    for pasta in pastas_lotes():
+        for path in sorted(pasta.glob(pattern), key=lambda p: p.name.lower()):
+            res = path.resolve()
+            if res in seen:
+                continue
+            seen.add(res)
+            found.append(path)
+    if not found:
+        return None
+    found.sort(key=lambda p: (0 if p.parent.resolve() == BASES_DIR.resolve() else 1, p.name.lower()))
+    return found[0]
 
 
 def listar_lotes_auditoria() -> list[Path]:
@@ -260,11 +297,11 @@ def listar_lotes_auditoria() -> list[Path]:
 
 
 def consolidar_base() -> tuple[Path, int]:
-    """Une TXTs de auditoria em auditoria central.txt (base 0), sem duplicar eventos."""
+    """Une TXTs de auditoria da pasta Bases em auditoria central.txt (base 0), sem duplicar eventos."""
     dest = TXT_CANDIDATES[0]
     lotes = listar_lotes_auditoria()
     if not lotes:
-        raise FileNotFoundError("Nenhum TXT de auditoria (cabecalho SEQAUXNOTAFISCAL) na pasta.")
+        raise FileNotFoundError("Nenhum TXT de auditoria (cabecalho SEQAUXNOTAFISCAL) na pasta Bases.")
 
     ordered: dict[tuple[str, ...], list[str]] = {}
     lidos = 0
@@ -464,14 +501,13 @@ def read_xlsx_rows(path: Path) -> list[dict[str, str]]:
     return rows
 
 
-def load_usuarios(base: Path) -> tuple[dict[str, dict], list[dict], str]:
-    files = sorted(base.glob("*Usuario*.xlsx"))
+def load_usuarios(_base: Path | None = None) -> tuple[dict[str, dict], list[dict], str]:
     mapa: dict[str, dict] = {}
     equipe: list[dict] = []
-    if not files:
-        print("Lista de usuarios .xlsx nao encontrada; monitoramento segue so com codigos.")
+    src = find_xlsx("*Usuario*.xlsx")
+    if not src:
+        print("Lista de usuarios .xlsx nao encontrada na pasta Bases; monitoramento segue so com codigos.")
         return mapa, equipe, ""
-    src = files[0]
     seen_eq: set[str] = set()
     total = 0
     for cells in read_xlsx_rows(src):
@@ -499,15 +535,14 @@ def load_usuarios(base: Path) -> tuple[dict[str, dict], list[dict], str]:
     return mapa, equipe, src.name
 
 
-def load_empresas(base: Path) -> tuple[dict[str, dict], dict[str, dict], list[dict], str]:
-    files = sorted(base.glob("*Empresa*.xlsx"))
+def load_empresas(_base: Path | None = None) -> tuple[dict[str, dict], dict[str, dict], list[dict], str]:
     by_nro: dict[str, dict] = {}
     by_loja: dict[str, dict] = {}
     cobertura: list[dict] = []
-    if not files:
-        print("Lista de Empresas.xlsx nao encontrada; cobertura usa so as lojas do lote.")
+    src = find_xlsx("*Empresa*.xlsx")
+    if not src:
+        print("Lista de Empresas.xlsx nao encontrada na pasta Bases; cobertura usa so as lojas do lote.")
         return by_nro, by_loja, cobertura, ""
-    src = files[0]
     for cells in read_xlsx_rows(src):
         nro_raw = cells.get("A", "")
         loja = (cells.get("B") or "").strip()
@@ -596,8 +631,8 @@ def carimbar_empresa(rec: dict, by_nro: dict[str, dict], by_loja: dict[str, dict
 
 
 def parse(path: Path) -> dict:
-    usuarios_mapa, equipe, usuarios_arquivo = load_usuarios(BASE)
-    empresas_nro, empresas_loja, cobertura, empresas_arquivo = load_empresas(BASE)
+    usuarios_mapa, equipe, usuarios_arquivo = load_usuarios()
+    empresas_nro, empresas_loja, cobertura, empresas_arquivo = load_empresas()
     nfs: dict[str, dict] = {}
     produtos_por_nf: dict[str, dict[str, str]] = defaultdict(dict)
     volume_lojas: dict[str, int] = defaultdict(int)

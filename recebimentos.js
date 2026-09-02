@@ -4,7 +4,7 @@ window.initRecebimentosDash = function initRecebimentosDash() {
   window.__recebimentosReady = true;
 
 
-  var DATA_PATH = "Bases/Base/Painel de controle de recebimento.txt";
+  var DATA_PATH = "Bases/Painel de controle de recebimento.txt";
   var PAGE_SIZE = 50;
   var SIT_ORDER = ["RECEBIDA", "XML", "RECEBIMENTO", "CONFERENCIA", "NOTA LIBERADA"];
   var EXCLUDED_EMPRESA_CODES = { C001: true, C038: true, R066: true, C034: true };
@@ -1230,7 +1230,7 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     els.loadBanner.classList.add("show");
     els.kpiGrid.innerHTML = "";
     els.kpiCaption.textContent = msg || "Sem dados";
-    els.funilBars.innerHTML = '<div class="empty"><strong>Sem dados.</strong><br>Carregue o arquivo da pasta Base.</div>';
+    els.funilBars.innerHTML = '<div class="empty"><strong>Sem dados.</strong><br>Carregue o arquivo da pasta Bases.</div>';
     els.ritmoTableWrap.innerHTML = "";
     els.lojasTableWrap.innerHTML = "";
     els.fornecedoresTableWrap.innerHTML = "";

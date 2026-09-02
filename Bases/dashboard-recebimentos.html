@@ -523,7 +523,7 @@
         <img src="../fribal-logo.png" alt="Fribal" onerror="this.style.display='none'" />
         <div class="header-text">
           <h1>Central de Recebimentos</h1>
-          <p id="headerSub">Dashboard operacional · fonte: pasta Base</p>
+          <p id="headerSub">Dashboard operacional · fonte: pasta Bases</p>
         </div>
       </div>
       <div class="header-actions">
@@ -540,7 +540,7 @@
           <strong>Não foi possível ler a Base automaticamente.</strong>
           <div class="caption" style="margin-top:4px">
             Abra via servidor local ou selecione
-            <code>Base/Painel de controle de recebimento.txt</code>.
+            <code>Painel de controle de recebimento.txt</code>.
           </div>
         </div>
         <button type="button" class="btn primary" id="btnPickFileBanner">Selecionar arquivo</button>
@@ -690,7 +690,7 @@
 
       <div class="footer">
         <div><strong>Fribal</strong> · Especialistas em Carne · Central de Recebimentos</div>
-        <div id="footerMeta">Fonte: Base/Painel de controle de recebimento.txt</div>
+        <div id="footerMeta">Fonte: Painel de controle de recebimento.txt</div>
       </div>
     </div>
   </div>
@@ -703,7 +703,7 @@
     document.body.classList.add("embed");
   }
 
-  var DATA_PATH = "Base/Painel de controle de recebimento.txt";
+  var DATA_PATH = "Painel de controle de recebimento.txt";
   var PAGE_SIZE = 50;
   var SIT_ORDER = ["RECEBIDA", "XML", "RECEBIMENTO", "CONFERENCIA", "NOTA LIBERADA"];
   var EXCLUDED_EMPRESA_CODES = { C001: true, C038: true, R066: true, C034: true };
@@ -1445,7 +1445,7 @@
     els.loadBanner.classList.add("show");
     els.kpiGrid.innerHTML = "";
     els.kpiCaption.textContent = msg || "Sem dados";
-    els.funilBars.innerHTML = '<div class="empty"><strong>Sem dados.</strong><br>Carregue o arquivo da pasta Base.</div>';
+    els.funilBars.innerHTML = '<div class="empty"><strong>Sem dados.</strong><br>Carregue o arquivo da pasta Bases.</div>';
     els.ritmoTableWrap.innerHTML = "";
     els.lojasTableWrap.innerHTML = "";
     els.fornecedoresTableWrap.innerHTML = "";

@@ -3,7 +3,13 @@ $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $enc = [System.Text.Encoding]::GetEncoding(1252)
 $base = Split-Path -Parent $MyInvocation.MyCommand.Path
-$destTxt = Join-Path $base "auditoria central.txt"
+$basesDir = Join-Path $base "Bases"
+if (-not (Test-Path -LiteralPath $basesDir -PathType Container)) {
+  $basesAlt = Join-Path $base "BASES"
+  if (Test-Path -LiteralPath $basesAlt -PathType Container) { $basesDir = $basesAlt }
+  else { $basesDir = $base }
+}
+$destTxt = Join-Path $basesDir "auditoria central.txt"
 $auditHeader = "SEQAUXNOTAFISCAL;NROEMPRESA;NOMEREDUZIDO;NUMERONF;SERIENF;SEQPESSOA;NOMEPESSOA;TIPNOTAFISCAL;OPERACAO;PRODUTO;DIASPRAZO;DESCGENERICA;VALORANTIGO;VALORNOVO;DTAHORALTERACAO;USUALTERACAO;TERMINALUSUALTERA;APPORIGEM;VERSAOSISTEMA;NFECHAVEACESSO"
 
 function Fold([string]$s) {
@@ -141,15 +147,24 @@ function Read-XlsxRows([string]$srcPath) {
   return $rows
 }
 
+function Find-ListaXlsx([string]$filter) {
+  foreach ($dir in @($basesDir, $base)) {
+    if (-not $dir) { continue }
+    if (-not (Test-Path -LiteralPath $dir -PathType Container)) { continue }
+    $xlsx = @(Get-ChildItem -LiteralPath $dir -Filter $filter -ErrorAction SilentlyContinue)
+    if ($xlsx.Count) { return $xlsx[0] }
+  }
+  return $null
+}
+
 function Ler-ListaUsuarios([string]$dir) {
-  $xlsx = @(Get-ChildItem -LiteralPath $dir -Filter "*Usuario*.xlsx" -ErrorAction SilentlyContinue)
+  $src = Find-ListaXlsx "*Usuario*.xlsx"
   $mapa = @{}
   $equipe = New-Object System.Collections.Generic.List[object]
-  if (-not $xlsx.Count) {
-    Write-Host "Lista de usuarios .xlsx nao encontrada; monitoramento segue so com codigos."
+  if (-not $src) {
+    Write-Host "Lista de usuarios .xlsx nao encontrada na pasta Bases; monitoramento segue so com codigos."
     return @{ mapa = $mapa; equipe = $equipe; arquivo = ""; total = 0 }
   }
-  $src = $xlsx[0]
   $total = 0
   foreach ($cells in (Read-XlsxRows $src.FullName)) {
     $codigoRaw = $(if ($cells.ContainsKey("B")) { $cells.B } else { "" })
@@ -175,15 +190,14 @@ function Ler-ListaUsuarios([string]$dir) {
 }
 
 function Ler-ListaEmpresas([string]$dir) {
-  $xlsx = @(Get-ChildItem -LiteralPath $dir -Filter "*Empresa*.xlsx" -ErrorAction SilentlyContinue)
+  $src = Find-ListaXlsx "*Empresa*.xlsx"
   $byNro = @{}
   $byLoja = @{}
   $cobertura = New-Object System.Collections.Generic.List[object]
-  if (-not $xlsx.Count) {
-    Write-Host "Lista de Empresas.xlsx nao encontrada; cobertura usa so as lojas do lote."
+  if (-not $src) {
+    Write-Host "Lista de Empresas.xlsx nao encontrada na pasta Bases; cobertura usa so as lojas do lote."
     return @{ nro = $byNro; loja = $byLoja; cobertura = $cobertura; arquivo = "" }
   }
-  $src = $xlsx[0]
   $cobSet = @("LOJAS", "EMPORIOS", "MERCEARIA")
   foreach ($cells in (Read-XlsxRows $src.FullName)) {
     $nroRaw = $(if ($cells.ContainsKey("A")) { $cells.A } else { "" })
@@ -310,7 +324,7 @@ function Get-AuditLotes {
 
 function Consolidate-Base {
   $lotes = @(Get-AuditLotes)
-  if (-not $lotes.Count) { throw "Nenhum TXT de auditoria (cabecalho SEQAUXNOTAFISCAL) na pasta." }
+  if (-not $lotes.Count) { throw "Nenhum TXT de auditoria (cabecalho SEQAUXNOTAFISCAL) na pasta Bases." }
   $map = New-Object "System.Collections.Generic.Dictionary[string,string[]]"
   $order = New-Object System.Collections.Generic.List[string]
   $lidos = 0
@@ -351,7 +365,7 @@ function Consolidate-Base {
   }
   finally { $sw.Close() }
   Move-Item -LiteralPath $tmp -Destination $destTxt -Force
-  Write-Host ("Base 0: {0} linhas unicas de {1} lote(s) ({2} lidas, {3} duplicatas ignoradas) -> auditoria central.txt" -f $order.Count, $lotes.Count, $lidos, $dups)
+  Write-Host ("Base 0: {0} linhas unicas de {1} lote(s) ({2} lidas, {3} duplicatas ignoradas) -> {4}" -f $order.Count, $lotes.Count, $lidos, $dups, (Split-Path -Leaf $destTxt))
   return $lotes.Count
 }
 
