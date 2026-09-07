@@ -297,6 +297,9 @@ body.tab-receb > .footer {
   gap: 8px;
   padding: 4px 12px 12px;
 }
+.dia-grupos-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
 .dia-grupo {
   display: block;
   width: 100%;

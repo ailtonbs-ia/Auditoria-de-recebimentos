@@ -27,6 +27,8 @@ const SEGMENTO_SHORT = {
 };
 
 const SEGMENTOS_COBERTURA = ["LOJAS", "EMPORIOS", "MERCEARIA"];
+/** Segmentos considerados no cruzamento Painel × Central (sem Empórios). */
+const SEGMENTOS_PAINEL_CENTRAL = ["LOJAS", "MERCEARIA"];
 
 const $ = (id) => document.getElementById(id);
 const dash = "-";
@@ -106,6 +108,15 @@ function metaLabel(data) {
 
 let DATA = null;
 let TAB = "central";
+
+/** Painel de recebimento (cruzamento Produtividade × entradas do dia). */
+const PAINEL_PATH = "Bases/Painel de controle de recebimento.txt";
+const PAINEL_EXCL_EMP = { C001: true, C038: true, R066: true, C034: true };
+const RIO_GRANDE_NAME = "RIO GRANDE COMERCIO DE CARNE";
+const RIO_GRANDE_KEEP_CODE = "10";
+let PAINEL_ROWS = [];
+let PAINEL_READY = false;
+let PAINEL_LOADING = false;
 
 function esc(s) {
   return String(s ?? "")
@@ -261,6 +272,106 @@ function isForn331(item) {
   const nome = typeof item === "string" ? item : (item && item.fornecedor) || "";
   const f = String(nome || "").trim();
   return f === "331" || f.startsWith("331 ") || f.startsWith("331-");
+}
+
+function painelEmpresaCode(empresa) {
+  const s = String(empresa || "").trim();
+  const i = s.indexOf("-");
+  return (i >= 0 ? s.slice(0, i) : s).trim().toUpperCase();
+}
+
+function painelFornCode(fornecedor) {
+  const s = String(fornecedor || "").trim();
+  const i = s.indexOf("-");
+  return (i >= 0 ? s.slice(0, i) : s).trim();
+}
+
+/** Mesmas exclusões do Painel (Recebimentos), incl. fornecedor 331. */
+function isPainelBusinessExcluded(row) {
+  if (PAINEL_EXCL_EMP[painelEmpresaCode(row.empresa)]) return true;
+  const fornCode = painelFornCode(row.fornecedor);
+  if (fornCode === "331" || isForn331(row)) return true;
+  const forn = String(row.fornecedor || "").toUpperCase();
+  if (forn.includes(RIO_GRANDE_NAME) && fornCode !== RIO_GRANDE_KEEP_CODE) return true;
+  return false;
+}
+
+function decodePainelText(buffer) {
+  const bytes = buffer instanceof ArrayBuffer ? new Uint8Array(buffer) : buffer;
+  const asLatin = new TextDecoder("windows-1252").decode(bytes);
+  const asUtf = new TextDecoder("utf-8").decode(bytes);
+  if (asUtf.includes("\uFFFD")) return asLatin;
+  return asUtf;
+}
+
+function parsePainelDate(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (m) return m[1];
+  const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  return "";
+}
+
+function parsePainelCsv(text) {
+  const lines = String(text).replace(/^\uFEFF/, "").split(/\r?\n/);
+  if (!lines.length) return [];
+  const header = lines[0].split(";");
+  const idx = {};
+  for (let i = 0; i < header.length; i++) idx[header[i].trim()] = i;
+  const col = (parts, name) => {
+    const j = idx[name];
+    return j == null ? "" : String(parts[j] != null ? parts[j] : "").trim();
+  };
+  const rows = [];
+  for (let li = 1; li < lines.length; li++) {
+    const line = lines[li];
+    if (!line || !line.trim()) continue;
+    const parts = line.split(";");
+    const row = {
+      empresa: col(parts, "EMPRESA"),
+      fornecedor: col(parts, "FORNECEDOR"),
+      dataEntrada: parsePainelDate(col(parts, "DATA_ENTRADA")),
+      chave: col(parts, "CHAVE_ACESSO"),
+    };
+    if (isPainelBusinessExcluded(row)) continue;
+    if (!row.chave || !row.dataEntrada) continue;
+    rows.push(row);
+  }
+  return rows;
+}
+
+function chavesAuditoriaSets() {
+  const central = new Set();
+  const qualquerIn = new Set();
+  (DATA && DATA.lancamentos ? DATA.lancamentos : []).forEach((r) => {
+    if (isLojaFora(r.loja) || isForn331(r)) return;
+    const c = String(r.chave || "").trim();
+    if (!c) return;
+    qualquerIn.add(c);
+    if (r.usuario_eh_central || isCentralCode(r.usuario)) central.add(c);
+  });
+  return { central, qualquerIn };
+}
+
+async function loadPainel() {
+  if (PAINEL_READY || PAINEL_LOADING) return;
+  PAINEL_LOADING = true;
+  try {
+    const res = await fetch(PAINEL_PATH + "?t=" + Date.now());
+    if (!res.ok) throw new Error(res.statusText || String(res.status));
+    const buf = await res.arrayBuffer();
+    PAINEL_ROWS = parsePainelCsv(decodePainelText(buf));
+    PAINEL_READY = true;
+  } catch (err) {
+    console.error("Painel (cruzamento):", err);
+    PAINEL_ROWS = [];
+    PAINEL_READY = false;
+  } finally {
+    PAINEL_LOADING = false;
+    if (DATA && TAB === "central") renderDiaCentral();
+  }
 }
 
 function filters() {
@@ -571,33 +682,106 @@ function ymdShift(ymd, days) {
 }
 
 function rotuloDiaOperacional(data, filtrado) {
-  const hoje = ymdLocal();
-  if (data === hoje) return filtrado ? "Hoje · filtrado" : "Hoje";
-  if (data === ymdShift(hoje, -1)) return filtrado ? "Ontem · filtrado" : "Ontem";
-  return filtrado ? "Dia filtrado" : "Ultimo dia";
+  if (filtrado) {
+    const hoje = ymdLocal();
+    if (data === hoje) return "Hoje · filtrado";
+    if (data === ymdShift(hoje, -1)) return "Ontem · filtrado";
+    return "Dia filtrado";
+  }
+  return "Ultimo dia util";
 }
 
-function diaOperacionalCentral() {
-  const rows = (DATA.lancamentos || []).filter((r) => !isLojaFora(r.loja) && !isForn331(r));
-  const datas = [...new Set(rows.map((r) => r.data).filter(Boolean))].sort();
-  const filtrada = ($("f-data") && $("f-data").value) || "";
-  const data = filtrada || datas[datas.length - 1] || "";
+function isDiaUtil(ymd) {
+  const [y, m, d] = String(ymd || "").split("-").map(Number);
+  if (!y || !m || !d) return false;
+  const dow = new Date(y, m - 1, d).getDay();
+  // Varejo: seg–sáb. Domingo não conta.
+  return dow >= 1 && dow <= 6;
+}
+
+function segsPainelCentralAtivos() {
   const filtroSeg = ($("f-segmento") && $("f-segmento").value) || "";
-  const doDiaAll = rows.filter((r) => r.data === data);
-  const doDia = doDiaAll.filter((r) => !filtroSeg || segmentoOf(r) === filtroSeg);
-  const central = doDia.filter((r) => r.usuario_eh_central || isCentralCode(r.usuario));
+  if (filtroSeg && SEGMENTOS_PAINEL_CENTRAL.includes(filtroSeg)) return [filtroSeg];
+  if (filtroSeg) return []; // Empórios ou outro: card sem volume neste recorte
+  return SEGMENTOS_PAINEL_CENTRAL.slice();
+}
+
+function datasPainelCentral() {
+  const segs = new Set(SEGMENTOS_PAINEL_CENTRAL);
+  const set = new Set();
+  for (let i = 0; i < PAINEL_ROWS.length; i++) {
+    const r = PAINEL_ROWS[i];
+    if (!r.dataEntrada) continue;
+    const seg = segmentoOf({ loja: r.empresa });
+    if (!segs.has(seg)) continue;
+    set.add(r.dataEntrada);
+  }
+  return [...set].sort();
+}
+
+/** Ultimo dia util com dados no Painel, excluindo hoje (dia ainda em aberto). */
+function ultimoDiaUtilPainel() {
+  const hoje = ymdLocal();
+  const datas = datasPainelCentral();
+  for (let i = datas.length - 1; i >= 0; i--) {
+    const d = datas[i];
+    if (d >= hoje) continue;
+    if (isDiaUtil(d)) return d;
+  }
+  return "";
+}
+
+/**
+ * Card do dia operacional: Painel (entrada) × Central (IN), só Lojas e Mercearias.
+ */
+function diaOperacionalCentral() {
+  const filtrada = ($("f-data") && $("f-data").value) || "";
+  const datasPainel = PAINEL_READY ? datasPainelCentral() : [];
+  const datasAudit = [...new Set((DATA.lancamentos || []).map((r) => r.data).filter(Boolean))].sort();
+  const data =
+    filtrada ||
+    (PAINEL_READY ? ultimoDiaUtilPainel() : "") ||
+    datasPainel[datasPainel.length - 1] ||
+    datasAudit[datasAudit.length - 1] ||
+    "";
+  const segsOk = new Set(segsPainelCentralAtivos());
+  const { central, qualquerIn } = chavesAuditoriaSets();
 
   const bySeg = {};
-  doDiaAll.forEach((r) => {
-    const s = segmentoOf(r);
-    if (!s || !SEGMENTOS_COBERTURA.includes(s)) return;
-    if (!bySeg[s]) bySeg[s] = { nfsDia: 0, nfsCentral: 0, unidades: new Set() };
-    bySeg[s].nfsDia += 1;
-    if (r.usuario_eh_central || isCentralCode(r.usuario)) bySeg[s].nfsCentral += 1;
-    if (r.loja) bySeg[s].unidades.add(r.loja);
+  SEGMENTOS_PAINEL_CENTRAL.forEach((s) => {
+    bySeg[s] = { nfsDia: 0, nfsCentral: 0, semIn: 0, unidades: new Set() };
   });
 
-  const grupos = SEGMENTOS_COBERTURA.map((seg) => {
+  let nfs = 0;
+  let totalDia = 0;
+  let semIn = 0;
+  const unidades = new Set();
+
+  if (PAINEL_READY && data) {
+    for (let i = 0; i < PAINEL_ROWS.length; i++) {
+      const r = PAINEL_ROWS[i];
+      if (r.dataEntrada !== data) continue;
+      const seg = segmentoOf({ loja: r.empresa });
+      if (!segsOk.has(seg)) continue;
+      totalDia += 1;
+      if (r.empresa) unidades.add(r.empresa);
+      const g = bySeg[seg];
+      if (g) {
+        g.nfsDia += 1;
+        if (r.empresa) g.unidades.add(r.empresa);
+      }
+      if (central.has(r.chave)) {
+        nfs += 1;
+        if (g) g.nfsCentral += 1;
+      } else if (!qualquerIn.has(r.chave)) {
+        semIn += 1;
+        if (g) g.semIn += 1;
+      }
+    }
+  }
+
+  const grupos = SEGMENTOS_PAINEL_CENTRAL.map((seg) => {
+    if (segsOk.size && !segsOk.has(seg)) return null;
     const g = bySeg[seg];
     if (!g || !g.nfsDia) return null;
     const pct = (g.nfsCentral / g.nfsDia) * 100;
@@ -606,37 +790,42 @@ function diaOperacionalCentral() {
       label: segmentoLabel(seg),
       nfsCentral: g.nfsCentral,
       nfsDia: g.nfsDia,
+      semIn: g.semIn,
       pct,
       unidades: g.unidades.size,
     };
   }).filter(Boolean);
 
-  const unidades = new Set(doDia.map((r) => r.loja).filter(Boolean)).size;
-  const pct = doDia.length ? (central.length / doDia.length) * 100 : 0;
+  const pct = totalDia ? (nfs / totalDia) * 100 : 0;
   return {
     data,
     filtrado: Boolean(filtrada),
-    nfs: central.length,
-    totalDia: doDia.length,
+    loading: !PAINEL_READY,
+    nfs,
+    totalDia,
+    semIn,
     pct,
-    unidades,
+    unidades: unidades.size,
     grupos,
   };
 }
 
+/** Dia com mais unidades (Lojas/Mercearias) cuja entrada no Painel foi tratada pela Central. */
 function recordeLojasCentral() {
-  const filtroSeg = ($("f-segmento") && $("f-segmento").value) || "";
+  if (!PAINEL_READY) return null;
+  const segsOk = new Set(segsPainelCentralAtivos());
+  if (!segsOk.size) return null;
+  const { central } = chavesAuditoriaSets();
   const porDia = {};
-  (DATA.lancamentos || []).forEach((r) => {
-    if (!r.data || isLojaFora(r.loja) || isForn331(r)) return;
-    if (!(r.usuario_eh_central || isCentralCode(r.usuario))) return;
-    if (!r.loja) return;
-    const seg = segmentoOf(r);
-    if (!SEGMENTOS_COBERTURA.includes(seg)) return;
-    if (filtroSeg && seg !== filtroSeg) return;
-    if (!porDia[r.data]) porDia[r.data] = new Set();
-    porDia[r.data].add(r.loja);
-  });
+  for (let i = 0; i < PAINEL_ROWS.length; i++) {
+    const r = PAINEL_ROWS[i];
+    if (!r.dataEntrada || !r.empresa || !r.chave) continue;
+    const seg = segmentoOf({ loja: r.empresa });
+    if (!segsOk.has(seg)) continue;
+    if (!central.has(r.chave)) continue;
+    if (!porDia[r.dataEntrada]) porDia[r.dataEntrada] = new Set();
+    porDia[r.dataEntrada].add(r.empresa);
+  }
   let best = null;
   Object.keys(porDia).forEach((data) => {
     const lojas = porDia[data].size;
@@ -661,8 +850,8 @@ function renderDiaCentral() {
     return;
   }
   const titulo = d.filtrado
-    ? "Meta: a Central atender o volume de NFs do dia. Clique para limpar o filtro desta data"
-    : "Meta: a Central atender o volume de NFs do dia. Clique para filtrar este dia";
+    ? "Painel × Central (Lojas e Mercearias). Clique para limpar o filtro desta data"
+    : "Painel × Central (Lojas e Mercearias). Clique para filtrar este dia";
   const gruposHtml = d.grupos
     .map((g) => {
       const on = ($("f-segmento") && $("f-segmento").value) === g.seg ? " is-on" : "";
@@ -671,20 +860,26 @@ function renderDiaCentral() {
         <span class="lbl">${esc(g.label)}</span>
         <b style="color:${metaColor(g.pct, 100)}">${fmt(g.nfsCentral)} <small>de ${fmt(g.nfsDia)}</small></b>
         <div class="track"><i style="width:${g.pct}%;background:${metaColor(g.pct, 100)}"></i></div>
-        <div class="sub">${fmtPct(g.pct)} · em ${fmt(g.unidades)} ${unidadeLbl}</div>
+        <div class="sub">${fmtPct(g.pct)} · em ${fmt(g.unidades)} ${unidadeLbl} · ${fmt(g.semIn)} sem inclusão</div>
       </button>`;
     })
     .join("");
   const recorde = recordeLojasCentral();
   const recordeOn = recorde && ($("f-data") && $("f-data").value) === recorde.data;
   const recordeHtml = recorde && recorde.lojas
-    ? `<button type="button" class="dia-central-recorde${recordeOn ? " is-on" : ""}" data-dia="${esc(recorde.data)}" title="Dia em que a Central atendeu mais unidades no periodo. Clique para filtrar">
+    ? `<button type="button" class="dia-central-recorde${recordeOn ? " is-on" : ""}" data-dia="${esc(recorde.data)}" title="Dia em que a Central atendeu mais unidades (Painel × Central, Lojas e Mercearias). Clique para filtrar">
         <span class="lbl">Mais unidades no dia</span>
         <b>${fmtData(recorde.data)}</b>
         <div class="sub">${fmt(recorde.lojas)} unidades${recorde.data === ymdLocal() ? " · hoje" : ""}</div>
       </button>`
     : "";
   const unidadeLbl = d.unidades === 1 ? "unidade" : "unidades";
+  const totalVal = d.loading ? dash : fmt(d.totalDia);
+  const totalSub = d.loading ? "carregando painel…" : `em ${fmt(d.unidades)} ${unidadeLbl}`;
+  const centralVal = d.loading ? dash : fmt(d.nfs);
+  const centralSub = d.loading
+    ? "aguarde"
+    : `de ${fmt(d.totalDia)} notas · ${fmtPct(d.pct)} · ${fmt(d.semIn)} sem inclusão`;
   el.innerHTML = `<div class="dia-central-wrap">
     <div class="dia-central-top">
       <button type="button" class="dia-central-card" data-dia="${esc(d.data)}" title="${esc(titulo)}">
@@ -693,19 +888,19 @@ function renderDiaCentral() {
           <strong>${fmtData(d.data)}</strong>
         </div>
         <div class="dia-central-stat">
-          <span class="lbl">NFs da Central</span>
-          <b>${fmt(d.nfs)}</b>
-          <div class="sub">de ${fmt(d.totalDia)} no dia</div>
+          <span class="lbl">Notas no dia</span>
+          <b>${totalVal}</b>
+          <div class="sub">${totalSub}</div>
         </div>
         <div class="dia-central-stat">
-          <span class="lbl">Participação no dia</span>
-          <b style="color:${metaColor(d.pct, 100)}">${fmtPct(d.pct)}</b>
-          <div class="sub">em ${fmt(d.unidades)} ${unidadeLbl}</div>
+          <span class="lbl">Central tratou</span>
+          <b style="color:${d.loading ? "inherit" : metaColor(d.pct, 100)}">${centralVal}</b>
+          <div class="sub">${centralSub}</div>
         </div>
       </button>
       ${recordeHtml}
     </div>
-    <div class="dia-grupos">${gruposHtml}</div>
+    <div class="dia-grupos dia-grupos-2">${gruposHtml}</div>
   </div>`;
 }
 
@@ -1395,8 +1590,10 @@ function boot(data) {
 }
 
 async function load() {
+  const painelPromise = loadPainel();
   if (window.AUDITORIA) {
     boot(window.AUDITORIA);
+    await painelPromise;
     return;
   }
   try {
@@ -1407,6 +1604,7 @@ async function load() {
     $("meta").textContent = "Nao foi possivel carregar dados.js/dados.json. Rode: powershell -ExecutionPolicy Bypass -File parse_auditoria.ps1";
     console.error(err);
   }
+  await painelPromise;
 }
 
 bind();
