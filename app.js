@@ -582,50 +582,58 @@ function diaOperacionalCentral() {
   const datas = [...new Set(rows.map((r) => r.data).filter(Boolean))].sort();
   const filtrada = ($("f-data") && $("f-data").value) || "";
   const data = filtrada || datas[datas.length - 1] || "";
-  const doDia = rows.filter((r) => r.data === data);
-  const central = doDia.filter((r) => r.usuario_eh_central || isCentralCode(r.usuario));
-  const atendidas = new Set(central.map((r) => r.loja).filter(Boolean));
-  const nfsPorSeg = {};
-  central.forEach((r) => {
-    const s = segmentoOf(r);
-    if (!s) return;
-    nfsPorSeg[s] = (nfsPorSeg[s] || 0) + 1;
-  });
   const filtroSeg = ($("f-segmento") && $("f-segmento").value) || "";
-  const universoAll = coberturaLista();
-  const universo = universoAll.filter((e) => !filtroSeg || e.segmento === filtroSeg);
+  const doDiaAll = rows.filter((r) => r.data === data);
+  const doDia = doDiaAll.filter((r) => !filtroSeg || segmentoOf(r) === filtroSeg);
+  const central = doDia.filter((r) => r.usuario_eh_central || isCentralCode(r.usuario));
+
+  const bySeg = {};
+  doDiaAll.forEach((r) => {
+    const s = segmentoOf(r);
+    if (!s || !SEGMENTOS_COBERTURA.includes(s)) return;
+    if (!bySeg[s]) bySeg[s] = { nfsDia: 0, nfsCentral: 0, unidades: new Set() };
+    bySeg[s].nfsDia += 1;
+    if (r.usuario_eh_central || isCentralCode(r.usuario)) bySeg[s].nfsCentral += 1;
+    if (r.loja) bySeg[s].unidades.add(r.loja);
+  });
+
   const grupos = SEGMENTOS_COBERTURA.map((seg) => {
-    const meta = universoAll.filter((e) => e.segmento === seg);
-    if (!meta.length) return null;
-    const ok = meta.filter((e) => atendidas.has(e.loja));
-    const pct = meta.length ? (ok.length / meta.length) * 100 : 0;
-    return { seg, label: segmentoLabel(seg), ok: ok.length, meta: meta.length, pct, nfs: nfsPorSeg[seg] || 0 };
+    const g = bySeg[seg];
+    if (!g || !g.nfsDia) return null;
+    const pct = (g.nfsCentral / g.nfsDia) * 100;
+    return {
+      seg,
+      label: segmentoLabel(seg),
+      nfsCentral: g.nfsCentral,
+      nfsDia: g.nfsDia,
+      pct,
+      unidades: g.unidades.size,
+    };
   }).filter(Boolean);
-  const lojasMeta = universo.length;
-  const lojasOk = universo.filter((e) => atendidas.has(e.loja)).length;
-  const lojasPct = lojasMeta ? (lojasOk / lojasMeta) * 100 : 0;
+
+  const unidades = new Set(doDia.map((r) => r.loja).filter(Boolean)).size;
+  const pct = doDia.length ? (central.length / doDia.length) * 100 : 0;
   return {
     data,
     filtrado: Boolean(filtrada),
     nfs: central.length,
-    lojas: lojasOk,
-    lojasMeta,
-    lojasPct,
     totalDia: doDia.length,
+    pct,
+    unidades,
     grupos,
   };
 }
 
 function recordeLojasCentral() {
   const filtroSeg = ($("f-segmento") && $("f-segmento").value) || "";
-  const universo = coberturaLista().filter((e) => !filtroSeg || e.segmento === filtroSeg);
-  const lojaSet = new Set(universo.map((e) => e.loja));
-  if (!lojaSet.size) return null;
   const porDia = {};
   (DATA.lancamentos || []).forEach((r) => {
     if (!r.data || isLojaFora(r.loja) || isForn331(r)) return;
     if (!(r.usuario_eh_central || isCentralCode(r.usuario))) return;
-    if (!r.loja || !lojaSet.has(r.loja)) return;
+    if (!r.loja) return;
+    const seg = segmentoOf(r);
+    if (!SEGMENTOS_COBERTURA.includes(seg)) return;
+    if (filtroSeg && seg !== filtroSeg) return;
     if (!porDia[r.data]) porDia[r.data] = new Set();
     porDia[r.data].add(r.loja);
   });
@@ -653,28 +661,30 @@ function renderDiaCentral() {
     return;
   }
   const titulo = d.filtrado
-    ? "Meta: atender lojas e emporios no dia. Clique para limpar o filtro desta data"
-    : "Meta: atender lojas e emporios no dia. Clique para filtrar este dia";
+    ? "Meta: a Central atender o volume de NFs do dia. Clique para limpar o filtro desta data"
+    : "Meta: a Central atender o volume de NFs do dia. Clique para filtrar este dia";
   const gruposHtml = d.grupos
     .map((g) => {
       const on = ($("f-segmento") && $("f-segmento").value) === g.seg ? " is-on" : "";
+      const unidadeLbl = g.unidades === 1 ? "unidade" : "unidades";
       return `<button type="button" class="dia-grupo${on}" data-filter-key="segmento" data-filter-val="${esc(g.seg)}" title="Filtrar ${esc(g.label)}">
         <span class="lbl">${esc(g.label)}</span>
-        <b style="color:${metaColor(g.pct, 100)}">${fmt(g.ok)} <small>de ${fmt(g.meta)}</small></b>
+        <b style="color:${metaColor(g.pct, 100)}">${fmt(g.nfsCentral)} <small>de ${fmt(g.nfsDia)}</small></b>
         <div class="track"><i style="width:${g.pct}%;background:${metaColor(g.pct, 100)}"></i></div>
-        <div class="sub">${fmt(g.nfs)} NF · ${fmtPct(g.pct)} · meta 100%</div>
+        <div class="sub">${fmtPct(g.pct)} · em ${fmt(g.unidades)} ${unidadeLbl}</div>
       </button>`;
     })
     .join("");
   const recorde = recordeLojasCentral();
   const recordeOn = recorde && ($("f-data") && $("f-data").value) === recorde.data;
   const recordeHtml = recorde && recorde.lojas
-    ? `<button type="button" class="dia-central-recorde${recordeOn ? " is-on" : ""}" data-dia="${esc(recorde.data)}" title="Dia em que a Central atendeu mais lojas no periodo. Clique para filtrar">
-        <span class="lbl">Mais lojas no dia</span>
+    ? `<button type="button" class="dia-central-recorde${recordeOn ? " is-on" : ""}" data-dia="${esc(recorde.data)}" title="Dia em que a Central atendeu mais unidades no periodo. Clique para filtrar">
+        <span class="lbl">Mais unidades no dia</span>
         <b>${fmtData(recorde.data)}</b>
-        <div class="sub">${fmt(recorde.lojas)} lojas${recorde.data === ymdLocal() ? " · hoje" : ""}</div>
+        <div class="sub">${fmt(recorde.lojas)} unidades${recorde.data === ymdLocal() ? " · hoje" : ""}</div>
       </button>`
     : "";
+  const unidadeLbl = d.unidades === 1 ? "unidade" : "unidades";
   el.innerHTML = `<div class="dia-central-wrap">
     <div class="dia-central-top">
       <button type="button" class="dia-central-card" data-dia="${esc(d.data)}" title="${esc(titulo)}">
@@ -688,9 +698,9 @@ function renderDiaCentral() {
           <div class="sub">de ${fmt(d.totalDia)} no dia</div>
         </div>
         <div class="dia-central-stat">
-          <span class="lbl">Unidades atendidas</span>
-          <b style="color:${metaColor(d.lojasPct, 100)}">${fmt(d.lojas)} de ${fmt(d.lojasMeta)}</b>
-          <div class="sub">${fmtPct(d.lojasPct)} · lojas + emporios</div>
+          <span class="lbl">Participação no dia</span>
+          <b style="color:${metaColor(d.pct, 100)}">${fmtPct(d.pct)}</b>
+          <div class="sub">em ${fmt(d.unidades)} ${unidadeLbl}</div>
         </div>
       </button>
       ${recordeHtml}
