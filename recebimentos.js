@@ -109,11 +109,13 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     });
   }
 
-  function empresasForGrupo(grupo) {
+  function empresasForGrupos(grupos) {
     var emps = uniqueSorted(allRows.map(function (r) { return r.empresa; }));
-    if (!grupo) return emps;
+    if (!grupos || !grupos.length) return emps;
+    var set = Object.create(null);
+    for (var i = 0; i < grupos.length; i++) set[grupos[i]] = true;
     return emps.filter(function (emp) {
-      return segmentoEmpresa(emp) === grupo;
+      return set[segmentoEmpresa(emp)];
     });
   }
 
@@ -319,6 +321,7 @@ window.initRecebimentosDash = function initRecebimentosDash() {
 
   function openCalPopover(textEl) {
     if (!textEl) return;
+    closeAllMultiSelects();
     calAnchor = textEl;
     var minD = textEl.dataset.minDate || "";
     var maxD = textEl.dataset.maxDate || "";
@@ -645,18 +648,267 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     });
   }
 
-  function fillSelect(select, values, placeholder, labels) {
-    if (!select) return;
-    labels = labels || {};
-    var current = select.value;
-    var html = '<option value="">' + esc(placeholder) + "</option>";
-    for (var i = 0; i < values.length; i++) {
-      var val = values[i];
-      html +=
-        '<option value="' + esc(val) + '">' + esc(labels[val] || val) + "</option>";
+  var multiSelects = [];
+  var mselSituacao = null;
+  var mselGrupo = null;
+  var mselEmpresa = null;
+
+  function closeAllMultiSelects(except) {
+    for (var i = 0; i < multiSelects.length; i++) {
+      if (multiSelects[i] !== except) multiSelects[i].close();
     }
-    select.innerHTML = html;
-    if (current && values.indexOf(current) >= 0) select.value = current;
+  }
+
+  function createMultiSelect(host, opts) {
+    opts = opts || {};
+    var placeholder = opts.placeholder || "Todos";
+    var searchable = !!opts.searchable;
+    var alignEnd = !!opts.alignEnd;
+    var onChange = opts.onChange || function () {};
+    var selected = [];
+    var options = [];
+    var searchQ = "";
+    var open = false;
+    var noop = {
+      getValues: function () { return []; },
+      setOptions: function () {},
+      clear: function () {},
+      close: function () {},
+    };
+    if (!host) return noop;
+
+    host.classList.add("msel");
+    host.innerHTML =
+      '<button type="button" class="msel-btn" id="' + esc(host.id) + '-btn"' +
+      ' aria-haspopup="listbox" aria-expanded="false">' +
+      '<span class="msel-text">' + esc(placeholder) + "</span>" +
+      '<span class="msel-caret" aria-hidden="true"></span>' +
+      "</button>";
+    var btn = host.querySelector(".msel-btn");
+    var textEl = host.querySelector(".msel-text");
+    var panel = document.createElement("div");
+    panel.className = "rb-msel-panel" + (alignEnd ? " align-end" : "");
+    panel.setAttribute("role", "listbox");
+    panel.setAttribute("aria-multiselectable", "true");
+    document.body.appendChild(panel);
+
+    function labelOf(val) {
+      for (var i = 0; i < options.length; i++) {
+        if (options[i].value === val) return options[i].label;
+      }
+      return val;
+    }
+
+    function syncButton() {
+      var n = selected.length;
+      if (!n) {
+        textEl.textContent = placeholder;
+        btn.classList.remove("has-value");
+        btn.title = placeholder;
+      } else if (n === 1) {
+        textEl.textContent = labelOf(selected[0]);
+        btn.classList.add("has-value");
+        btn.title = labelOf(selected[0]);
+      } else {
+        textEl.textContent = n + " selecionadas";
+        btn.classList.add("has-value");
+        btn.title = selected.map(labelOf).join(", ");
+      }
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) btn.classList.add("is-open");
+      else btn.classList.remove("is-open");
+    }
+
+    function visibleOptions() {
+      var q = String(searchQ || "").trim().toLowerCase();
+      if (!q) return options;
+      return options.filter(function (o) {
+        return (
+          String(o.label).toLowerCase().indexOf(q) >= 0 ||
+          String(o.value).toLowerCase().indexOf(q) >= 0
+        );
+      });
+    }
+
+    function renderList() {
+      var vis = visibleOptions();
+      var list = panel.querySelector(".msel-list");
+      if (!list) return;
+      var html = "";
+      if (!vis.length) {
+        html = '<div class="msel-empty">Nenhuma opção</div>';
+      } else {
+        for (var i = 0; i < vis.length; i++) {
+          var o = vis[i];
+          var checked = selected.indexOf(o.value) >= 0;
+          html +=
+            '<label class="msel-opt">' +
+            '<input type="checkbox" value="' + esc(o.value) + '"' +
+            (checked ? " checked" : "") +
+            " />" +
+            "<span>" + esc(o.label) + "</span>" +
+            "</label>";
+        }
+      }
+      list.innerHTML = html;
+    }
+
+    function renderPanel() {
+      var html = '<div class="msel-toolbar">' +
+        '<button type="button" data-msel="clear">Limpar</button>' +
+        '<button type="button" data-msel="all">Marcar todas</button>' +
+        "</div>";
+      if (searchable) {
+        html +=
+          '<input type="search" class="msel-search" placeholder="Buscar…" value="' +
+          esc(searchQ) +
+          '" />';
+      }
+      html += '<div class="msel-list"></div>';
+      panel.innerHTML = html;
+      renderList();
+    }
+
+    function syncChecks() {
+      var boxes = panel.querySelectorAll('input[type="checkbox"]');
+      for (var i = 0; i < boxes.length; i++) {
+        boxes[i].checked = selected.indexOf(boxes[i].value) >= 0;
+      }
+    }
+
+    function positionPanel() {
+      var rect = btn.getBoundingClientRect();
+      var width = Math.max(rect.width, alignEnd ? 260 : rect.width);
+      var left = alignEnd ? rect.right - width : rect.left;
+      if (left < 8) left = 8;
+      if (left + width > window.innerWidth - 8) {
+        left = Math.max(8, window.innerWidth - width - 8);
+      }
+      panel.style.width = width + "px";
+      panel.style.minWidth = width + "px";
+      panel.style.left = left + "px";
+      var top = rect.bottom + 6;
+      panel.style.top = top + "px";
+      var h = panel.offsetHeight || 280;
+      if (top + h > window.innerHeight - 8 && rect.top > h + 8) {
+        panel.style.top = Math.max(8, rect.top - 6 - h) + "px";
+      }
+    }
+
+    function setSelected(next, silent) {
+      var seen = Object.create(null);
+      selected = [];
+      for (var i = 0; i < next.length; i++) {
+        var v = next[i];
+        if (!v || seen[v]) continue;
+        seen[v] = true;
+        selected.push(v);
+      }
+      syncButton();
+      if (open) syncChecks();
+      if (!silent) onChange();
+    }
+
+    function openPanel() {
+      if (open) return;
+      closeCalPopover();
+      closeAllMultiSelects(api);
+      open = true;
+      searchQ = "";
+      renderPanel();
+      panel.classList.add("is-open");
+      syncButton();
+      positionPanel();
+      if (searchable) {
+        var searchEl = panel.querySelector(".msel-search");
+        if (searchEl) searchEl.focus();
+      }
+    }
+
+    function closePanel() {
+      if (!open) return;
+      open = false;
+      searchQ = "";
+      panel.classList.remove("is-open");
+      syncButton();
+    }
+
+    function toggleValue(val) {
+      var next = selected.slice();
+      var idx = next.indexOf(val);
+      if (idx < 0) next.push(val);
+      else next.splice(idx, 1);
+      setSelected(next);
+    }
+
+    btn.addEventListener("mousedown", function (e) {
+      e.stopPropagation();
+    });
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (open) closePanel();
+      else openPanel();
+    });
+
+    panel.addEventListener("mousedown", function (e) {
+      e.stopPropagation();
+    });
+
+    panel.addEventListener("click", function (e) {
+      var act = e.target.closest("[data-msel]");
+      if (act) {
+        e.preventDefault();
+        var kind = act.getAttribute("data-msel");
+        if (kind === "clear") setSelected([]);
+        if (kind === "all") {
+          setSelected(visibleOptions().map(function (o) { return o.value; }));
+        }
+        return;
+      }
+      var opt = e.target.closest(".msel-opt");
+      if (!opt || !panel.contains(opt)) return;
+      e.preventDefault();
+      var input = opt.querySelector('input[type="checkbox"]');
+      if (input) toggleValue(input.value);
+    });
+
+    panel.addEventListener("input", function (e) {
+      if (!e.target.classList.contains("msel-search")) return;
+      searchQ = e.target.value;
+      renderList();
+    });
+
+    panel.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        closePanel();
+        btn.focus();
+      }
+    });
+
+    var api = {
+      getValues: function () { return selected.slice(); },
+      setOptions: function (values, labels) {
+        labels = labels || {};
+        options = (values || []).map(function (v) {
+          return { value: v, label: labels[v] || v };
+        });
+        var allowed = Object.create(null);
+        for (var i = 0; i < options.length; i++) allowed[options[i].value] = true;
+        selected = selected.filter(function (v) { return allowed[v]; });
+        syncButton();
+        if (open) {
+          renderPanel();
+          positionPanel();
+        }
+      },
+      clear: function () { setSelected([], true); },
+      close: closePanel,
+    };
+    multiSelects.push(api);
+    syncButton();
+    return api;
   }
 
   function populateFilterOptions() {
@@ -669,20 +921,15 @@ window.initRecebimentosDash = function initRecebimentosDash() {
       if (ia !== ib) return ia - ib;
       return a.localeCompare(b, "pt-BR");
     });
-    fillSelect(els.fSituacao, sits, "Todas");
+    if (mselSituacao) mselSituacao.setOptions(sits);
 
     var segs = segmentosDisponiveis();
     var segLabels = {};
     for (var s = 0; s < segs.length; s++) segLabels[segs[s]] = segmentoLabel(segs[s]);
-    var grupoAtual = els.fGrupo ? els.fGrupo.value : "";
-    fillSelect(els.fGrupo, segs, "Todos", segLabels);
-    if (grupoAtual && segs.indexOf(grupoAtual) >= 0) els.fGrupo.value = grupoAtual;
-
-    fillSelect(
-      els.fEmpresa,
-      empresasForGrupo(els.fGrupo ? els.fGrupo.value : ""),
-      "Todas"
-    );
+    if (mselGrupo) mselGrupo.setOptions(segs, segLabels);
+    if (mselEmpresa) {
+      mselEmpresa.setOptions(empresasForGrupos(mselGrupo ? mselGrupo.getValues() : []));
+    }
 
     var minD = "";
     var maxD = "";
@@ -704,9 +951,9 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     return {
       de: brDateToIso(els.fDataDe.value),
       ate: brDateToIso(els.fDataAte.value),
-      situacao: els.fSituacao.value || "",
-      grupo: els.fGrupo && els.fGrupo.value ? els.fGrupo.value : "",
-      empresa: els.fEmpresa.value || "",
+      situacao: mselSituacao ? mselSituacao.getValues() : [],
+      grupo: mselGrupo ? mselGrupo.getValues() : [],
+      empresa: mselEmpresa ? mselEmpresa.getValues() : [],
     };
   }
 
@@ -714,9 +961,9 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     opts = opts || {};
     if (f.de && (!r.dataEntrada || r.dataEntrada < f.de)) return false;
     if (f.ate && (!r.dataEntrada || r.dataEntrada > f.ate)) return false;
-    if (!opts.ignoreSituacao && f.situacao && r.situacao !== f.situacao) return false;
-    if (f.grupo && segmentoEmpresa(r.empresa) !== f.grupo) return false;
-    if (f.empresa && r.empresa !== f.empresa) return false;
+    if (!opts.ignoreSituacao && f.situacao && f.situacao.length && f.situacao.indexOf(r.situacao) < 0) return false;
+    if (f.grupo && f.grupo.length && f.grupo.indexOf(segmentoEmpresa(r.empresa)) < 0) return false;
+    if (f.empresa && f.empresa.length && f.empresa.indexOf(r.empresa) < 0) return false;
     return true;
   }
 
@@ -871,7 +1118,7 @@ window.initRecebimentosDash = function initRecebimentosDash() {
       var item = bySit[j];
       if (item.count === 0 && SIT_ORDER.indexOf(item.key) < 0) continue;
       var pctTotal = (100 * item.count) / totalCount;
-      var active = !sitFiltro || sitFiltro === item.key;
+      var active = !sitFiltro.length || sitFiltro.indexOf(item.key) >= 0;
       var fillCls = sitFillClass(item.key);
       html +=
         '<div class="funil-row ' + fillCls + (active ? "" : " dim") + '">' +
@@ -1330,30 +1577,44 @@ window.initRecebimentosDash = function initRecebimentosDash() {
   document.getElementById("rb-btnClearFilters").addEventListener("click", function () {
     clearDateField(els.fDataDe);
     clearDateField(els.fDataAte);
-    els.fSituacao.value = "";
-    if (els.fGrupo) els.fGrupo.value = "";
-    els.fEmpresa.value = "";
+    if (mselSituacao) mselSituacao.clear();
+    if (mselGrupo) mselGrupo.clear();
+    if (mselEmpresa) mselEmpresa.clear();
+    closeAllMultiSelects();
     populateFilterOptions();
     applyFilters();
   });
 
   function onGrupoChange() {
-    var grupo = els.fGrupo ? els.fGrupo.value : "";
-    var empresaAtual = els.fEmpresa.value || "";
-    fillSelect(els.fEmpresa, empresasForGrupo(grupo), "Todas");
-    if (empresaAtual && empresasForGrupo(grupo).indexOf(empresaAtual) >= 0) {
-      els.fEmpresa.value = empresaAtual;
+    if (mselEmpresa) {
+      mselEmpresa.setOptions(empresasForGrupos(mselGrupo ? mselGrupo.getValues() : []));
     }
     applyFilters();
   }
 
-  ["change", "input"].forEach(function (ev) {
-    els.fSituacao.addEventListener(ev, applyFilters);
-    els.fEmpresa.addEventListener(ev, applyFilters);
+  mselSituacao = createMultiSelect(els.fSituacao, {
+    placeholder: "Todas",
+    onChange: applyFilters,
   });
-  if (els.fGrupo) {
-    els.fGrupo.addEventListener("change", onGrupoChange);
-  }
+  mselGrupo = createMultiSelect(els.fGrupo, {
+    placeholder: "Todos",
+    onChange: onGrupoChange,
+  });
+  mselEmpresa = createMultiSelect(els.fEmpresa, {
+    placeholder: "Todas",
+    searchable: true,
+    alignEnd: true,
+    onChange: applyFilters,
+  });
+
+  document.addEventListener("mousedown", function (e) {
+    var t = e.target;
+    if (t && t.closest && (t.closest(".msel") || t.closest(".rb-msel-panel"))) return;
+    closeAllMultiSelects();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") closeAllMultiSelects();
+  });
 
   bindBrDateField(els.fDataDe);
   bindBrDateField(els.fDataAte);

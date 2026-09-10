@@ -86,8 +86,13 @@
   font-size: 11px;
 }
 
+#view-receb #rb-filtros {
+  overflow: visible;
+}
+
 #view-receb .filters {
   display: grid;
+  overflow: visible;
   grid-template-columns:
     minmax(0, 1fr)
     minmax(0, 1fr)
@@ -117,7 +122,8 @@
 }
 
 #view-receb .field input,
-#view-receb .field select {
+#view-receb .field select,
+#view-receb .msel-btn {
   width: 100%;
   background: var(--bg-3);
   color: var(--text);
@@ -130,9 +136,149 @@
 
 #view-receb .field input::placeholder { color: #7a8490; }
 #view-receb .field input:focus,
-#view-receb .field select:focus {
+#view-receb .field select:focus,
+#view-receb .msel-btn:focus-visible {
   outline: 2px solid rgba(227, 27, 35, 0.35);
   border-color: var(--accent);
+}
+
+#view-receb .msel:has(.msel-btn.is-open) {
+  z-index: 4100;
+}
+
+#view-receb .msel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 35px;
+  cursor: pointer;
+  text-align: left;
+}
+
+#view-receb .msel-btn.is-open,
+#view-receb .msel-btn.has-value {
+  border-color: var(--accent);
+}
+
+#view-receb .msel-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#view-receb .msel-caret {
+  flex: 0 0 auto;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--muted);
+}
+
+#view-receb .msel-btn.is-open .msel-caret {
+  transform: rotate(180deg);
+}
+
+.rb-msel-panel {
+  position: fixed;
+  z-index: 5000;
+  display: none;
+  flex-direction: column;
+  max-height: min(280px, 70vh);
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg-2);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  font-family: var(--font);
+}
+
+.rb-msel-panel.is-open {
+  display: flex;
+}
+
+.rb-msel-panel .msel-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 6px 6px;
+}
+
+.rb-msel-panel .msel-toolbar button {
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+}
+
+.rb-msel-panel .msel-toolbar button:hover {
+  text-decoration: underline;
+}
+
+.rb-msel-panel .msel-search {
+  width: 100%;
+  margin: 0 0 6px;
+  background: var(--bg-3);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.rb-msel-panel .msel-search:focus {
+  outline: 2px solid rgba(227, 27, 35, 0.35);
+  border-color: var(--accent);
+}
+
+.rb-msel-panel .msel-list {
+  overflow: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.rb-msel-panel .msel-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.rb-msel-panel .msel-opt:hover,
+.rb-msel-panel .msel-opt:has(input:focus-visible) {
+  background: rgba(227, 27, 35, 0.12);
+}
+
+.rb-msel-panel .msel-opt input {
+  width: auto;
+  height: auto;
+  margin: 2px 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  accent-color: var(--accent);
+}
+
+.rb-msel-panel .msel-empty {
+  padding: 10px 8px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 #view-receb .date-field {
