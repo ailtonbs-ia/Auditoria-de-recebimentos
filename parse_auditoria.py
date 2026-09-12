@@ -11,6 +11,7 @@ import json
 import os
 import re
 import sys
+import unicodedata
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -69,11 +70,11 @@ RE_PRODUTO_MSG = re.compile(r"produto\s+(\d+)", re.IGNORECASE)
 RE_PRODUTO_CAMPO = re.compile(r"^(\d+)\s*-\s*(.+)$")
 RE_NUM = re.compile(r"(\d+(?:[.,]\d+)?)")
 RE_UNIT_VENDA = re.compile(
-    r"produto\s+(\d+)\s*\(([\d.,]+)\)\s+est[a�]\s+(acima|abaixo)\s+do\s+pre[c�]o\s+de\s+venda\s+\(([\d.,]+)\)",
+    r"produto\s+(\d+)\s*\(([\d.,]+)\)\s+est[a\u00e1]\s+(acima|abaixo)\s+do\s+pre[c\u00e7]o\s+de\s+venda\s+\(([\d.,]+)\)",
     re.IGNORECASE,
 )
 RE_UNIT_CUSTO = re.compile(
-    r"produto\s+(\d+).{0,40}est[a�]\s+(acima|abaixo)\s+do\s+custo.{0,40}limite:\s*([\d.,]+)",
+    r"produto\s+(\d+).{0,40}est[a\u00e1]\s+(acima|abaixo)\s+do\s+custo.{0,40}limite:\s*([\d.,]+)",
     re.IGNORECASE,
 )
 RE_PEDIDO = re.compile(
@@ -121,22 +122,9 @@ CAMPOS_RUIDO = (
 
 
 def fold(text: str) -> str:
-    return (
-        (text or "")
-        .casefold()
-        .replace("�", "a")
-        .replace("�", "a")
-        .replace("�", "a")
-        .replace("�", "a")
-        .replace("�", "e")
-        .replace("�", "e")
-        .replace("�", "i")
-        .replace("�", "o")
-        .replace("�", "o")
-        .replace("�", "o")
-        .replace("�", "u")
-        .replace("�", "c")
-    )
+    t = unicodedata.normalize("NFKD", text or "")
+    t = "".join(ch for ch in t if not unicodedata.combining(ch))
+    return t.casefold()
 
 
 def parse_br_number(raw: str | None) -> float | None:
@@ -469,7 +457,7 @@ def classificar_regra(campo: str) -> str:
     t = fold(campo)
     if "pedido" in t:
         return "pedido"
-    if "preco de venda" in t or "pre�o de venda" in t:
+    if "preco de venda" in t:
         return "venda_abaixo" if "abaixo" in t else "venda_acima"
     if "custo" in t:
         return "custo_abaixo" if "abaixo" in t else "custo_acima"
