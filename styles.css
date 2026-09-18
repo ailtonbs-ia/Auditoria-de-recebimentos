@@ -105,8 +105,8 @@ body.drawer-open { overflow: hidden; }
 }
 .logo-wrap {
   flex: 0 0 auto;
-  height: 72px;
-  width: 110px;
+  height: 46px;
+  width: 150px;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -119,10 +119,10 @@ body.drawer-open { overflow: hidden; }
 .logo-wrap:hover { opacity: 0.88; }
 .logo-wrap:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .logo {
-  height: 72px;
-  width: 110px;
+  height: 46px;
+  width: 150px;
   object-fit: contain;
-  object-position: center;
+  object-position: left center;
   display: block;
 }
 .topbar h1 { margin: 0; font-size: 18px; font-weight: 800; letter-spacing: -0.02em; overflow-wrap: anywhere; }
@@ -141,6 +141,15 @@ body.drawer-open { overflow: hidden; }
   letter-spacing: 0.02em;
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+.credit {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-align: center;
+  line-height: 1.4;
 }
 
 .tabs {
@@ -170,9 +179,6 @@ body.drawer-open { overflow: hidden; }
 
 .wrap { padding: 12px max(22px, env(safe-area-inset-right)) 28px max(22px, env(safe-area-inset-left)); }
 
-body.tab-receb > .footer {
-  display: none;
-}
 .kpis {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 0.85fr)) minmax(0, 1.25fr) minmax(0, 1.15fr) minmax(0, 0.9fr);
@@ -726,8 +732,7 @@ tr.clickable { cursor: pointer; }
     align-items: stretch;
     padding: max(10px, env(safe-area-inset-top)) 14px 10px;
   }
-  .logo-wrap { height: 56px; width: 86px; }
-  .logo { height: 56px; width: 86px; }
+  .logo-wrap, .logo { height: 36px; width: 118px; }
   .brand { flex-wrap: wrap; }
   .topbar h1 { font-size: 16px; }
   .brand-actions {
