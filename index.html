@@ -51,7 +51,7 @@
     <button class="tab active" data-tab="central">Produtividade</button>
     <button class="tab" data-tab="inc">Inconsistencias</button>
     <button class="tab" data-tab="ops">Operacional</button>
-    <button class="tab" data-tab="receb">Recebimentos</button>
+    <button class="tab" data-tab="receb">Controle de Recebimentos</button>
     <button class="tab" data-tab="fluxo">Fluxo</button>
   </nav>
 
@@ -103,53 +103,80 @@
     </section>
 
     <section id="view-inc" class="hidden">
-      <div class="grid-2 grid-inc">
-        <article class="card">
-          <div class="lbl">Entradas x inconsistencias por dia</div>
-          <div class="bars" id="bars-dia"></div>
-        </article>
-        <article class="card">
-          <div class="lbl">Rankings</div>
-          <div class="ranks">
-            <div class="rank-cell">
-              <div class="muted">Unidades (NFs inconsistentes)</div>
-              <ul class="rank-list" id="rk-loja"></ul>
-            </div>
-            <div class="rank-cell">
-              <div class="muted">Fornecedores</div>
-              <ul class="rank-list" id="rk-forn"></ul>
-            </div>
-            <div class="rank-cell">
-              <div class="muted">Produtos</div>
-              <ul class="rank-list" id="rk-prod"></ul>
-            </div>
-            <div class="rank-cell">
-              <div class="muted">Justificativas</div>
-              <ul class="rank-list" id="rk-just"></ul>
-            </div>
-          </div>
-        </article>
+      <div class="pd-toolbar">
+        <div class="pd-chips" id="pd-chips"></div>
+        <div class="pd-actions">
+          <span class="muted" id="pd-status"></span>
+          <button type="button" class="ghost" id="pd-clear">Limpar filtros</button>
+          <button type="button" class="ghost" id="pd-reload">Atualizar</button>
+          <a class="ghost" data-pd-sheet href="#" target="_blank" rel="noopener noreferrer">Abrir planilha</a>
+        </div>
       </div>
-      <div class="muted count-line" id="count-inc"></div>
-      <p class="table-hint">Em telas estreitas a lista vira cartoes. No tablet, deslize a tabela na horizontal.</p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Data</th>
-              <th>Loja</th>
-              <th>Grupo</th>
-              <th>NF</th>
-              <th>Fornecedor</th>
-              <th>Produto</th>
-              <th>Tipo</th>
-              <th>Aceite</th>
-              <th>Equipe</th>
-              <th>Justificativa</th>
-            </tr>
-          </thead>
-          <tbody id="tb-inc"></tbody>
-        </table>
+
+      <div class="pd-error" id="pd-error" hidden>
+        <div>
+          <strong>Nao foi possivel ler a planilha da Central.</strong>
+          <div class="muted" style="margin-top:4px">Verifique se ela continua compartilhada para "qualquer pessoa com o link". <span id="pd-error-msg"></span></div>
+        </div>
+        <a class="ghost" data-pd-sheet href="#" target="_blank" rel="noopener noreferrer">Abrir planilha</a>
+      </div>
+
+      <div id="pd-content">
+        <section class="kpis pd-kpis" id="pd-kpis"></section>
+        <p class="headline" id="pd-headline">Carregando pendencias da planilha...</p>
+
+        <div class="board pd-board">
+          <article class="card">
+            <div class="lbl">Pendencias por tipo</div>
+            <p class="hint">Clique para filtrar</p>
+            <div id="pd-tipos" class="rank-bars pd-wrap-names"></div>
+          </article>
+          <article class="card">
+            <div class="lbl">Lojas com mais pendencias</div>
+            <p class="hint">Top 10 unidades</p>
+            <div id="pd-lojas" class="rank-bars"></div>
+          </article>
+          <article class="card">
+            <div class="lbl">Quem precisa agir</div>
+            <p class="hint">Contato e setor responsavel</p>
+            <div id="pd-resp" class="rank-bars pd-wrap-names"></div>
+          </article>
+          <article class="card">
+            <div class="lbl">Idade das pendencias</div>
+            <p class="hint">Dias em aberto</p>
+            <div id="pd-idade" class="rank-bars"></div>
+          </article>
+          <article class="card">
+            <div class="lbl">Por data da nota</div>
+            <p class="hint">Data informada na planilha</p>
+            <div id="pd-datas" class="rank-bars"></div>
+          </article>
+          <article class="card">
+            <div class="lbl">Atendimento da Central</div>
+            <p class="hint">Quem acompanha a pendencia</p>
+            <div id="pd-atendente" class="rank-bars"></div>
+          </article>
+        </div>
+
+        <div class="muted count-line" id="pd-count"></div>
+        <p class="table-hint">Em telas estreitas a lista vira cartoes. No tablet, deslize a tabela na horizontal.</p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Loja</th>
+                <th>Nota</th>
+                <th>Data</th>
+                <th>Inconsistencia</th>
+                <th>Contato</th>
+                <th>Setor</th>
+                <th>Atendente</th>
+                <th>Dias</th>
+              </tr>
+            </thead>
+            <tbody id="pd-tbody"></tbody>
+          </table>
+        </div>
       </div>
     </section>
 
@@ -195,7 +222,7 @@
               <strong>Não foi possível ler a Base automaticamente.</strong>
               <div class="caption" style="margin-top:4px">
                 Abra via servidor local ou selecione
-                <code>Bases/Painel de controle de recebimento.txt</code>.
+                <code>Bases/Painel de Controle de Recebimentos.txt</code>.
               </div>
             </div>
             <button type="button" class="ghost" id="rb-btnPickFileBanner">Selecionar arquivo</button>
@@ -484,5 +511,6 @@
   <script src="dados.js" charset="utf-8"></script>
   <script src="app.js" charset="utf-8"></script>
   <script src="recebimentos.js" charset="utf-8"></script>
+  <script src="pendencias.js" charset="utf-8"></script>
 </body>
 </html>

@@ -110,7 +110,7 @@ let DATA = null;
 let TAB = "central";
 
 /** Painel de recebimento (cruzamento Produtividade × entradas do dia). */
-const PAINEL_PATH = "Bases/Painel de controle de recebimento.txt";
+const PAINEL_PATH = "Bases/Painel de Controle de Recebimentos.txt";
 const PAINEL_EXCL_EMP = { C001: true, C038: true, R066: true, C034: true };
 const RIO_GRANDE_NAME = "RIO GRANDE COMERCIO DE CARNE";
 const RIO_GRANDE_KEEP_CODE = "10";
@@ -969,25 +969,6 @@ function renderKpis() {
   `;
 }
 
-function renderRank(id, items, fmtItem) {
-  $(id).innerHTML =
-    (items || [])
-      .slice(0, 8)
-      .map((it) => `<li><span class="name" title="${esc(it.nome)}">${esc(it.nome)}</span><span>${fmtItem(it)}</span></li>`)
-      .join("") || "<li class='muted'>Sem dados</li>";
-}
-
-function renderBars() {
-  const max = Math.max(1, ...DATA.por_dia.map((d) => d.nfs_entrada));
-  $("bars-dia").innerHTML = DATA.por_dia
-    .map((d) => {
-      const wEnt = (d.nfs_entrada / max) * 100;
-      const wInc = (d.nfs_inconsistentes / max) * 100;
-      return `<div class="bar-row"><span>${fmtData(d.data)}</span><div class="bar"><i class="alt" style="width:${wEnt}%"></i><i style="width:${wInc}%"></i></div><span>${d.nfs_inconsistentes}/${d.nfs_entrada}</span></div>`;
-    })
-    .join("");
-}
-
 function renderCentral() {
   const s = teamStats();
   const x = execStats();
@@ -1030,30 +1011,6 @@ function renderCentral() {
       </div>`;
     })
     .join("") || `<div class="muted">Nenhuma pessoa do grupo Central de Recebimento na planilha.</div>`;
-}
-
-function renderIncTable(rows) {
-  $("count-inc").textContent = `${rows.length} inconsistencia(s) - clique na linha para a linha do tempo da NF`;
-  if (!rows.length) {
-    $("tb-inc").innerHTML = `<tr class="empty"><td colspan="10" class="muted">Nenhum registro com os filtros atuais.</td></tr>`;
-    return;
-  }
-  $("tb-inc").innerHTML = rows
-    .map(
-      (i) => `<tr class="clickable" data-nf="${esc(i.nf_id)}">
-        <td class="num" data-label="Data">${fmtData(i.data)} ${esc(i.hora || "")}</td>
-        <td data-label="Loja">${esc(i.loja)}</td>
-        <td data-label="Grupo">${segTag(segmentoOf(i)) || dash}</td>
-        <td class="num" data-label="NF">${esc(i.numeronf)}/${esc(i.serienf)}</td>
-        <td data-label="Fornecedor">${esc(i.fornecedor)}</td>
-        <td data-label="Produto">${esc(i.produto || i.produto_codigo || dash)}</td>
-        <td data-label="Tipo">${badge(i.tipo)}</td>
-        <td data-label="Aceite">${esc(i.aceite_nome || userLabel(i.aceite_usuario || i.usuario))}</td>
-        <td data-label="Equipe">${esc(grupoLabel(i.aceite_usuario, i.aceite_grupo))}</td>
-        <td data-label="Justificativa">${esc(i.justificativa || dash)}</td>
-      </tr>`
-    )
-    .join("");
 }
 
 function renderOpsTable(rows) {
@@ -1463,7 +1420,7 @@ function setFluxoRunning(on) {
 
 function setTab(tab) {
   TAB = tab;
-  const standalone = tab === "fluxo" || tab === "receb";
+  const standalone = tab === "fluxo" || tab === "receb" || tab === "inc";
   document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   $("view-central").classList.toggle("hidden", tab !== "central");
   $("view-inc").classList.toggle("hidden", tab !== "inc");
@@ -1482,6 +1439,9 @@ function setTab(tab) {
     if (tab === "receb" && typeof window.initRecebimentosDash === "function") {
       window.initRecebimentosDash();
     }
+    if (tab === "inc" && typeof window.initPendenciasDash === "function") {
+      window.initPendenciasDash();
+    }
     return;
   }
   setFluxoRunning(false);
@@ -1499,11 +1459,10 @@ function goHome() {
 }
 
 function render() {
-  if (!DATA || TAB === "fluxo" || TAB === "receb") return;
+  if (!DATA || TAB === "fluxo" || TAB === "receb" || TAB === "inc") return;
   renderDiaCentral();
   renderKpis();
   if (TAB === "central") renderCentral();
-  renderIncTable(filteredInc());
   renderOpsTable(filteredOps());
 }
 
@@ -1581,11 +1540,6 @@ function boot(data) {
   fillSelectLojas();
   fillSelect("f-forn", (data.filtros.fornecedores || []).filter((f) => !isForn331(f)), "Todos os fornecedores");
   fillSelect("f-tipo", data.filtros.tipos, "Todos os tipos", TIPO_LABEL);
-  renderRank("rk-loja", (data.rankings.lojas || []).filter((it) => !isLojaFora(it.nome)), (it) => `${it.nfs_inconsistentes} NF${it.taxa != null ? " | " + it.taxa + "%" : ""}`);
-  renderRank("rk-forn", (data.rankings.fornecedores || []).filter((it) => !isForn331(it.nome)), (it) => fmt(it.qtd));
-  renderRank("rk-prod", data.rankings.produtos, (it) => fmt(it.qtd));
-  renderRank("rk-just", (data.rankings.justificativas || []).filter((it) => String(it.nome || "").trim().toLowerCase() !== "ok"), (it) => fmt(it.qtd));
-  renderBars();
   render();
 }
 

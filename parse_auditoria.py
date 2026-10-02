@@ -29,14 +29,12 @@ def pasta_bases() -> Path:
 
 BASES_DIR = pasta_bases()
 TXT_CANDIDATES = [
-    BASES_DIR / "auditoria central.txt",
-    BASES_DIR / "auditoria_central.txt",
-    BASE / "auditoria central.txt",
-    BASE / "auditoria_central.txt",
+    BASES_DIR / "Auditoria de Recebimentos.txt",
+    BASE / "Auditoria de Recebimentos.txt",
 ]
 OUT_JSON = BASE / "dados.json"
 OUT_JS = BASE / "dados.js"
-PAINEL_DEST = BASES_DIR / "Painel de controle de recebimento.txt"
+PAINEL_DEST = BASES_DIR / "Painel de Controle de Recebimentos.txt"
 PAINEL_HEADER = (
     "NUMERO_NF;SERIE;EMPRESA;FORNECEDOR;DATA_EMISSAO;DATA_ENTRADA;CGO;"
     "VALOR_TOTAL;SITUACAO_;SITUACAO;SEQNOTAFISCAL;SEQAUXNOTAFISCAL;"
@@ -291,7 +289,7 @@ def listar_lotes_auditoria() -> list[Path]:
 
 
 def consolidar_base() -> tuple[Path, int]:
-    """Une TXTs de auditoria da pasta Bases em auditoria central.txt (base 0), sem duplicar eventos."""
+    """Une TXTs de auditoria da pasta Bases em Auditoria de Recebimentos.txt (base 0), sem duplicar eventos."""
     dest = TXT_CANDIDATES[0]
     lotes = listar_lotes_auditoria()
     if not lotes:
@@ -387,7 +385,7 @@ def listar_lotes_painel() -> list[Path]:
 
 
 def consolidar_painel() -> tuple[Path, int]:
-    """Une TXTs do painel de recebimento em Painel de controle de recebimento.txt."""
+    """Une TXTs do painel de recebimento em Painel de Controle de Recebimentos.txt."""
     dest = PAINEL_DEST
     lotes = listar_lotes_painel()
     if not lotes:

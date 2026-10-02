@@ -4,7 +4,7 @@ window.initRecebimentosDash = function initRecebimentosDash() {
   window.__recebimentosReady = true;
 
 
-  var DATA_PATH = "Bases/Painel de controle de recebimento.txt";
+  var DATA_PATH = "Bases/Painel de Controle de Recebimentos.txt";
   var PAGE_SIZE = 50;
   var SIT_ORDER = ["RECEBIDA", "XML", "RECEBIMENTO", "CONFERENCIA", "NOTA LIBERADA"];
   var EXCLUDED_EMPRESA_CODES = { C001: true, C038: true, R066: true, C034: true };

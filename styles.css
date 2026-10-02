@@ -564,20 +564,75 @@ button.ghost, a.ghost {
 button.ghost:hover, a.ghost:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 .grid-2 { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr); gap: 12px; margin-bottom: 12px; }
-.grid-inc { grid-template-columns: minmax(220px, 0.7fr) minmax(0, 2.1fr); }
-.ranks { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-.rank-cell {
-  min-width: 0;
-  padding: 10px 14px 12px;
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
+
+.pd-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 14px;
 }
-.rank-cell:nth-child(2n) { border-right: 0; }
-.rank-cell:nth-child(n + 3) { border-bottom: 0; }
-.rank-list { list-style: none; margin: 8px 0 0; padding: 0; font-size: 12px; }
-.rank-list li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--line); min-width: 0; }
-.rank-list span:last-child { color: var(--muted); white-space: nowrap; flex: 0 0 auto; }
-.rank-list .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pd-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.pd-chip {
+  background: rgba(227, 27, 35, 0.14);
+  color: #ffb4b4;
+  border: 1px solid rgba(227, 27, 35, 0.4);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pd-chip:hover { background: var(--accent); color: #fff; }
+.pd-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+.pd-actions button:disabled { opacity: 0.5; cursor: progress; }
+.pd-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--bad);
+  border-radius: var(--radius);
+}
+.pd-error[hidden] { display: none; }
+#pd-content.is-loading { opacity: 0.55; }
+.pd-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.pd-board { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pd-board .card { min-width: 0; }
+.rank-bar.is-active { background: #2a2f38; box-shadow: inset 3px 0 0 var(--accent); }
+.pd-wrap-names .rank-bar {
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "pos name qty"
+    "pos track track";
+  row-gap: 4px;
+  align-items: start;
+}
+.pd-wrap-names .rank-bar .pos { grid-area: pos; padding-top: 1px; }
+.pd-wrap-names .rank-bar .name { grid-area: name; white-space: normal; overflow: visible; line-height: 1.3; }
+.pd-wrap-names .rank-bar .qty { grid-area: qty; padding-top: 1px; }
+.pd-wrap-names .rank-bar .track { grid-area: track; }
+.pd-tipo { font-weight: 700; color: var(--text); }
+.pd-missing { color: var(--warn); font-weight: 700; }
+.pd-age {
+  display: inline-block;
+  min-width: 26px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #0e1014;
+  font-weight: 800;
+  text-align: center;
+}
+#view-inc .msg { white-space: normal; min-width: 280px; }
 
 .bars { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .bar-row { display: grid; grid-template-columns: 88px minmax(0, 1fr) 90px; gap: 8px; align-items: center; font-size: 12px; }
@@ -678,19 +733,15 @@ tr.clickable { cursor: pointer; }
   .grid-2 { grid-template-columns: 1fr; }
   .board { grid-template-columns: 1fr; }
   .team { grid-template-columns: 1fr 1fr; }
+  .pd-board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 900px) {
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .kpis > .card { min-height: 0; }
-  .ranks { grid-template-columns: 1fr; }
-  .rank-cell {
-    border-right: 0;
-    padding-left: 0;
-    padding-right: 0;
-  }
-  .rank-cell:nth-child(n + 3) { border-bottom: 1px solid var(--line); }
-  .rank-cell:last-child { border-bottom: 0; }
+  .pd-board { grid-template-columns: 1fr; }
+  .pd-toolbar { grid-template-columns: 1fr; }
+  .pd-actions { justify-content: flex-start; }
   .table-hint { display: block; }
   .rank-bar {
     grid-template-columns: 22px minmax(0, 1fr) auto;
