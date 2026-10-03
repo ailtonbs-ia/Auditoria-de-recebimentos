@@ -31,8 +31,68 @@
     error: "",
     updatedAt: null,
     filters: {},
+    sort: { key: "contato", dir: "desc" },
     bound: false,
   };
+
+  const SORT_LABEL = {
+    loja: "Loja",
+    nota: "Nota",
+    data: "Data",
+    inconsistencia: "Inconsistencia",
+    contato: "Contato",
+    setor: "Setor",
+    atendente: "Atendente",
+    dias: "Dias",
+  };
+
+  const collator = new Intl.Collator("pt-BR", { sensitivity: "base", numeric: true });
+
+  function sortValue(r, key) {
+    switch (key) {
+      case "loja":
+        return `${r.codLoja} ${r.loja}`;
+      case "nota":
+        return Number(r.nota) || 0;
+      case "data":
+        return r.ymd || "";
+      case "inconsistencia":
+        return `${r.tipo} ${r.inconsistencia}`;
+      case "contato":
+        return r.contato === SEM_CONTATO ? "" : r.contato;
+      case "setor":
+        return r.setor === SEM_SETOR ? "" : r.setor;
+      default:
+        return r[key];
+    }
+  }
+
+  function compareRows(a, b) {
+    const { key, dir } = state.sort;
+    const va = sortValue(a, key);
+    const vb = sortValue(b, key);
+    let c = typeof va === "number" && typeof vb === "number" ? va - vb : collator.compare(String(va), String(vb));
+    if (dir === "desc") c = -c;
+    return c || b.dias - a.dias || a.ymd.localeCompare(b.ymd) || a.loja.localeCompare(b.loja);
+  }
+
+  function renderSortHeaders() {
+    document.querySelectorAll("#view-inc th[data-pd-sort]").forEach((th) => {
+      const active = th.dataset.pdSort === state.sort.key;
+      th.classList.toggle("is-sorted", active);
+      th.setAttribute("aria-sort", active ? (state.sort.dir === "asc" ? "ascending" : "descending") : "none");
+      const ind = th.querySelector(".sort-ind");
+      if (ind) ind.textContent = active ? (state.sort.dir === "asc" ? "▲" : "▼") : "↕";
+    });
+  }
+
+  function setSort(key) {
+    if (!SORT_LABEL[key]) return;
+    if (state.sort.key === key) state.sort.dir = state.sort.dir === "asc" ? "desc" : "asc";
+    else state.sort = { key, dir: key === "dias" ? "desc" : "asc" };
+    if (state.loaded) renderTable(filtered());
+    else renderSortHeaders();
+  }
 
   const el = (id) => document.getElementById(id);
   const escH = (s) =>
@@ -239,8 +299,10 @@
     }
   }
 
-  function filtered() {
-    return state.rows.filter((r) => Object.entries(state.filters).every(([k, v]) => !v || r[k] === v));
+  function filtered(skipKey) {
+    return state.rows.filter((r) =>
+      Object.entries(state.filters).every(([k, v]) => k === skipKey || !v.length || v.includes(r[k]))
+    );
   }
 
   function groupCount(rows, key) {
@@ -255,13 +317,13 @@
     const list = items.slice(0, opts.limit || 10);
     const max = Math.max(1, ...list.map((it) => it.qtd));
     const total = opts.total || 0;
-    const active = state.filters[opts.key];
+    const active = state.filters[opts.key] || [];
     box.innerHTML = list.length
       ? list
           .map((it, i) => {
             const w = (it.qtd / max) * 100;
             const hot = opts.noHot ? "" : i === 0 ? " hot1" : i === 1 ? " hot2" : i === 2 ? " hot3" : "";
-            const on = active === it.nome ? " is-active" : "";
+            const on = active.includes(it.nome) ? " is-active" : "";
             const color = opts.color ? opts.color(it) : "";
             const label = opts.label ? opts.label(it) : it.nome;
             const share = total ? ` | ${pct((it.qtd / total) * 100)}` : "";
@@ -320,12 +382,16 @@
     const count = el("pd-count");
     const tb = el("pd-tbody");
     if (!tb) return;
-    if (count) count.textContent = `${num(rows.length)} pendencia(s) - ordenadas pela mais antiga`;
+    renderSortHeaders();
+    if (count) {
+      const dirLabel = state.sort.dir === "asc" ? "crescente" : "decrescente";
+      count.textContent = `${num(rows.length)} pendencia(s) - ordenadas por ${SORT_LABEL[state.sort.key]} (${dirLabel})`;
+    }
     if (!rows.length) {
       tb.innerHTML = `<tr class="empty"><td colspan="8" class="muted">Nenhuma pendencia com os filtros atuais.</td></tr>`;
       return;
     }
-    const sorted = rows.slice().sort((a, b) => b.dias - a.dias || a.ymd.localeCompare(b.ymd) || a.loja.localeCompare(b.loja));
+    const sorted = rows.slice().sort(compareRows);
     tb.innerHTML = sorted
       .map((r) => {
         const bucket = AGE_BUCKETS.find((b) => b.id === r.idade);
@@ -346,7 +412,7 @@
   function renderChips() {
     const box = el("pd-chips");
     if (!box) return;
-    const entries = Object.entries(state.filters).filter(([, v]) => v);
+    const entries = Object.entries(state.filters).flatMap(([k, vals]) => vals.map((v) => [k, v]));
     box.innerHTML = entries
       .map(([k, v]) => {
         const label = k === "idade" ? (AGE_BUCKETS.find((b) => b.id === v) || {}).label || v : v;
@@ -382,40 +448,49 @@
     if (content) content.classList.toggle("is-loading", state.loading && !state.loaded);
     if (!state.loaded) return;
     const rows = filtered();
-    const total = rows.length;
     const tipos = groupCount(rows, "tipo").sort((a, b) => b.qtd - a.qtd);
     const lojas = groupCount(rows, "loja").sort((a, b) => b.qtd - a.qtd);
     renderKpis(rows);
     renderHeadline(rows, tipos, lojas);
-    renderBars("pd-tipos", tipos, { key: "tipo", total });
-    renderBars("pd-lojas", lojas, { key: "loja", total });
-    renderBars("pd-resp", groupCount(rows, "resp").sort((a, b) => b.qtd - a.qtd), { key: "resp", total });
-    const idadeCounts = groupCount(rows, "idade");
+    const facet = (key) => {
+      const base = filtered(key);
+      return { base, total: base.length, counts: groupCount(base, key) };
+    };
+    const ranked = (id, key) => {
+      const f = facet(key);
+      renderBars(id, f.counts.sort((a, b) => b.qtd - a.qtd), { key, total: f.total });
+    };
+    ranked("pd-tipos", "tipo");
+    ranked("pd-lojas", "loja");
+    ranked("pd-resp", "resp");
+    const idade = facet("idade");
     renderBars(
       "pd-idade",
-      AGE_BUCKETS.map((b) => ({ nome: b.id, qtd: (idadeCounts.find((c) => c.nome === b.id) || {}).qtd || 0 })),
+      AGE_BUCKETS.map((b) => ({ nome: b.id, qtd: (idade.counts.find((c) => c.nome === b.id) || {}).qtd || 0 })),
       {
         key: "idade",
-        total,
+        total: idade.total,
         noHot: true,
         pos: false,
         label: (it) => (AGE_BUCKETS.find((b) => b.id === it.nome) || {}).label || it.nome,
         color: (it) => (AGE_BUCKETS.find((b) => b.id === it.nome) || {}).color,
       }
     );
-    const ymdByData = new Map(rows.map((r) => [r.data, r.ymd]));
+    const datas = facet("data");
+    const ymdByData = new Map(datas.base.map((r) => [r.data, r.ymd]));
     renderBars(
       "pd-datas",
-      groupCount(rows, "data").sort((a, b) => String(ymdByData.get(a.nome)).localeCompare(String(ymdByData.get(b.nome)))),
-      { key: "data", total, noHot: true, pos: false, limit: 31 }
+      datas.counts.sort((a, b) => String(ymdByData.get(a.nome)).localeCompare(String(ymdByData.get(b.nome)))),
+      { key: "data", total: datas.total, noHot: true, pos: false, limit: 31 }
     );
-    renderBars("pd-atendente", groupCount(rows, "atendente").sort((a, b) => b.qtd - a.qtd), { key: "atendente", total });
+    ranked("pd-atendente", "atendente");
     renderTable(rows);
   }
 
   function toggleFilter(key, val) {
     if (!key) return;
-    state.filters[key] = state.filters[key] === val ? "" : val;
+    const cur = state.filters[key] || [];
+    state.filters[key] = cur.includes(val) ? cur.filter((v) => v !== val) : cur.concat([val]);
     render();
   }
 
@@ -425,6 +500,11 @@
     const view = el("view-inc");
     if (view) {
       view.addEventListener("click", (ev) => {
+        const th = ev.target.closest("th[data-pd-sort]");
+        if (th) {
+          setSort(th.dataset.pdSort);
+          return;
+        }
         const btn = ev.target.closest("[data-pd-key]");
         if (btn) toggleFilter(btn.dataset.pdKey, btn.dataset.pdVal);
       });

@@ -188,13 +188,187 @@ function badge(tipo) {
   return `<span class="badge t-${esc(tipo)}">${esc(TIPO_LABEL[tipo] || tipo)}</span>`;
 }
 
+const MSEL = {};
+
+function closeAllMsel(except) {
+  Object.values(MSEL).forEach((m) => {
+    if (m !== except) m.close();
+  });
+}
+
+function createMsel(id, onChange) {
+  const host = $(id);
+  if (!host) return null;
+  host.classList.add("msel");
+  host.innerHTML =
+    `<button type="button" class="msel-btn" aria-haspopup="listbox" aria-expanded="false">` +
+    `<span class="msel-text"></span><span class="msel-caret" aria-hidden="true"></span></button>`;
+  const btn = host.querySelector(".msel-btn");
+  const textEl = host.querySelector(".msel-text");
+  const panel = document.createElement("div");
+  panel.className = "rb-msel-panel";
+  panel.setAttribute("role", "listbox");
+  panel.setAttribute("aria-multiselectable", "true");
+  document.body.appendChild(panel);
+
+  let options = [];
+  let selected = [];
+  let placeholder = "Todos";
+  let open = false;
+  let searchQ = "";
+
+  const labelOf = (v) => (options.find((o) => o.value === v) || {}).label || v;
+
+  function syncButton() {
+    const n = selected.length;
+    if (!n) {
+      textEl.textContent = placeholder;
+      btn.title = placeholder;
+    } else if (n === 1) {
+      textEl.textContent = labelOf(selected[0]);
+      btn.title = labelOf(selected[0]);
+    } else {
+      textEl.textContent = `${n} selecionados`;
+      btn.title = selected.map(labelOf).join(", ");
+    }
+    btn.classList.toggle("has-value", n > 0);
+    btn.classList.toggle("is-open", open);
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
+  function visibleOptions() {
+    const q = searchQ.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter((o) => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q));
+  }
+
+  function renderList() {
+    const list = panel.querySelector(".msel-list");
+    if (!list) return;
+    const vis = visibleOptions();
+    if (!vis.length) {
+      list.innerHTML = `<div class="msel-empty">Nenhuma opção</div>`;
+      return;
+    }
+    let lastGroup = null;
+    list.innerHTML = vis
+      .map((o) => {
+        let head = "";
+        if (o.group && o.group !== lastGroup) head = `<div class="msel-group">${esc(o.group)}</div>`;
+        lastGroup = o.group || null;
+        const checked = selected.includes(o.value) ? " checked" : "";
+        return `${head}<label class="msel-opt"><input type="checkbox" value="${esc(o.value)}"${checked} /><span>${esc(o.label)}</span></label>`;
+      })
+      .join("");
+  }
+
+  function renderPanel() {
+    panel.innerHTML =
+      `<div class="msel-toolbar"><button type="button" data-msel="clear">Limpar</button><button type="button" data-msel="all">Marcar todos</button></div>` +
+      (options.length > 8 ? `<input type="search" class="msel-search" placeholder="Buscar…" value="${esc(searchQ)}" />` : "") +
+      `<div class="msel-list"></div>`;
+    renderList();
+  }
+
+  function positionPanel() {
+    const rect = btn.getBoundingClientRect();
+    const width = Math.max(rect.width, 240);
+    let left = rect.left;
+    if (left + width > window.innerWidth - 8) left = Math.max(8, window.innerWidth - width - 8);
+    panel.style.width = `${width}px`;
+    panel.style.left = `${left}px`;
+    const top = rect.bottom + 6;
+    panel.style.top = `${top}px`;
+    const h = panel.offsetHeight || 280;
+    if (top + h > window.innerHeight - 8 && rect.top > h + 8) panel.style.top = `${Math.max(8, rect.top - 6 - h)}px`;
+  }
+
+  function setSelected(next, silent) {
+    const allowed = new Set(options.map((o) => o.value));
+    selected = [...new Set(next)].filter((v) => v && allowed.has(v));
+    syncButton();
+    if (open) renderList();
+    if (!silent) onChange();
+  }
+
+  function openPanel() {
+    closeAllMsel(api);
+    open = true;
+    searchQ = "";
+    renderPanel();
+    panel.classList.add("is-open");
+    syncButton();
+    positionPanel();
+    const s = panel.querySelector(".msel-search");
+    if (s) s.focus();
+  }
+
+  function closePanel() {
+    if (!open) return;
+    open = false;
+    searchQ = "";
+    panel.classList.remove("is-open");
+    syncButton();
+  }
+
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    if (open) closePanel();
+    else openPanel();
+  });
+
+  panel.addEventListener("click", (e) => {
+    const act = e.target.closest("[data-msel]");
+    if (act) {
+      e.preventDefault();
+      if (act.dataset.msel === "clear") setSelected([]);
+      else setSelected(selected.concat(visibleOptions().map((o) => o.value)));
+      return;
+    }
+    const opt = e.target.closest(".msel-opt");
+    if (!opt) return;
+    e.preventDefault();
+    api.toggle(opt.querySelector("input").value);
+  });
+
+  panel.addEventListener("input", (e) => {
+    if (!e.target.classList.contains("msel-search")) return;
+    searchQ = e.target.value;
+    renderList();
+  });
+
+  const api = {
+    host,
+    panel,
+    values: () => selected.slice(),
+    has: (v) => selected.includes(v),
+    set: setSelected,
+    toggle(v) {
+      setSelected(selected.includes(v) ? selected.filter((x) => x !== v) : selected.concat([v]));
+    },
+    setOptions(opts, blank) {
+      options = opts.map((o) => ({ value: String(o.value), label: String(o.label), group: o.group || "" }));
+      if (blank) placeholder = blank;
+      setSelected(selected, true);
+      if (open) {
+        renderPanel();
+        positionPanel();
+      }
+    },
+    close: closePanel,
+  };
+  MSEL[id] = api;
+  syncButton();
+  return api;
+}
+
+function selVals(id) {
+  return MSEL[id] ? MSEL[id].values() : [];
+}
+
 function fillSelect(id, values, blank, labels) {
-  const el = $(id);
-  const cur = el.value;
-  el.innerHTML =
-    `<option value="">${blank}</option>` +
-    values.map((v) => `<option value="${esc(v)}">${esc((labels && labels[v]) || v)}</option>`).join("");
-  el.value = values.includes(cur) ? cur : "";
+  if (!MSEL[id]) return;
+  MSEL[id].setOptions(values.map((v) => ({ value: v, label: (labels && labels[v]) || v })), blank);
 }
 
 function isLojaFora(loja) {
@@ -237,16 +411,14 @@ function coberturaLista() {
 }
 
 function lojasDoFiltro() {
-  const seg = ($("f-segmento") && $("f-segmento").value) || "";
+  const segs = selVals("f-segmento");
   return ((DATA.filtros && DATA.filtros.lojas) || [])
     .filter((l) => l && !isLojaFora(l))
-    .filter((l) => !seg || segmentoOf({ loja: l }) === seg);
+    .filter((l) => !segs.length || segs.includes(segmentoOf({ loja: l })));
 }
 
 function fillSelectLojas() {
-  const el = $("f-loja");
-  if (!el) return;
-  const cur = el.value;
+  if (!MSEL["f-loja"]) return;
   const lojas = lojasDoFiltro();
   const groups = { LOJAS: [], EMPORIOS: [], MERCEARIA: [], OUTROS: [] };
   lojas.forEach((l) => {
@@ -254,16 +426,13 @@ function fillSelectLojas() {
     (groups[s] || groups.OUTROS).push(l);
   });
   const order = SEGMENTOS_COBERTURA.concat(["OUTROS"]);
-  const parts = [`<option value="">Todas as unidades</option>`];
   const used = order.filter((s) => (groups[s] || []).length);
+  const opts = [];
   used.forEach((s) => {
-    const label = s === "OUTROS" ? "Outros" : segmentoLabel(s);
-    if (used.length > 1) parts.push(`<optgroup label="${esc(label)}">`);
-    groups[s].forEach((v) => parts.push(`<option value="${esc(v)}">${esc(v)}</option>`));
-    if (used.length > 1) parts.push(`</optgroup>`);
+    const group = used.length > 1 ? (s === "OUTROS" ? "Outros" : segmentoLabel(s)) : "";
+    groups[s].forEach((v) => opts.push({ value: v, label: v, group }));
   });
-  el.innerHTML = parts.join("");
-  el.value = lojas.includes(cur) ? cur : "";
+  MSEL["f-loja"].setOptions(opts, "Todas as unidades");
 }
 
 function isForn331(item) {
@@ -374,17 +543,19 @@ async function loadPainel() {
   }
 }
 
-function filters() {
-  return {
-    q: $("q").value.trim().toLowerCase(),
-    data: $("f-data").value,
-    loja: $("f-loja").value,
-    forn: $("f-forn").value,
-    tipo: $("f-tipo").value,
-    segmento: ($("f-segmento") && $("f-segmento").value) || "",
+function filters(skip) {
+  const f = {
+    q: "",
+    data: selVals("f-data"),
+    loja: selVals("f-loja"),
+    forn: selVals("f-forn"),
+    tipo: selVals("f-tipo"),
+    segmento: selVals("f-segmento"),
     grupo: "",
     user: "",
   };
+  if (skip) f[skip] = [];
+  return f;
 }
 
 function matchGrupo(ehCentral, grupoFiltro) {
@@ -429,19 +600,19 @@ function matchText(item, q) {
 function matchBase(item, f) {
   if (isLojaFora(item.loja)) return false;
   if (isForn331(item)) return false;
-  if (f.data && item.data !== f.data) return false;
-  if (f.loja && item.loja !== f.loja) return false;
-  if (f.forn && item.fornecedor !== f.forn) return false;
-  if (f.segmento && segmentoOf(item) !== f.segmento) return false;
+  if (f.data.length && !f.data.includes(item.data)) return false;
+  if (f.loja.length && !f.loja.includes(item.loja)) return false;
+  if (f.forn.length && !f.forn.includes(item.fornecedor)) return false;
+  if (f.segmento.length && !f.segmento.includes(segmentoOf(item))) return false;
   return matchText(item, f.q);
 }
 
 function filteredInc(opts) {
-  const f = filters();
+  const f = filters(opts && opts.skip);
   const skipPerson = opts && opts.skipPerson;
   return DATA.inconsistencias.filter((i) => {
     if (!matchBase(i, f)) return false;
-    if (f.tipo && i.tipo !== f.tipo) return false;
+    if (f.tipo.length && !f.tipo.includes(i.tipo)) return false;
     if (!skipPerson) {
       const ace = i.aceite_usuario || i.usuario;
       if (!matchGrupo(i.aceite_eh_central ?? isCentralCode(ace), f.grupo)) return false;
@@ -456,7 +627,7 @@ function filteredOps(opts) {
   const skipPerson = opts && opts.skipPerson;
   return DATA.operacional.filter((i) => {
     if (!matchBase(i, f)) return false;
-    if (f.tipo && i.tipo !== f.tipo) return false;
+    if (f.tipo.length && !f.tipo.includes(i.tipo)) return false;
     if (!skipPerson) {
       if (!matchGrupo(i.usuario_eh_central ?? isCentralCode(i.usuario), f.grupo)) return false;
       if (!matchUser(i.usuario, f.user)) return false;
@@ -466,7 +637,7 @@ function filteredOps(opts) {
 }
 
 function filteredLanc(opts) {
-  const f = filters();
+  const f = filters(opts && opts.skip);
   const skipPerson = opts && opts.skipPerson;
   return (DATA.lancamentos || []).filter((i) => {
     if (!matchBase(i, f)) return false;
@@ -483,9 +654,9 @@ function shortName(s, n) {
   return t.length > n ? t.slice(0, n - 1) + "..." : t;
 }
 
-function execStats() {
-  const inc = filteredInc();
-  const lanc = filteredLanc({ skipPerson: true });
+function execStats(skip) {
+  const inc = filteredInc({ skip });
+  const lanc = filteredLanc({ skipPerson: true, skip });
   const volume = {};
   lanc.forEach((r) => {
     if (r.loja) volume[r.loja] = (volume[r.loja] || 0) + 1;
@@ -539,7 +710,8 @@ function renderRankBars(id, items, opts) {
           const hot = i === 0 ? " hot1" : i === 1 ? " hot2" : i === 2 ? " hot3" : "";
           const key = opts.filterKey;
           const val = opts.filterVal(it);
-          return `<button type="button" class="rank-bar${hot}" data-filter-key="${esc(key)}" data-filter-val="${esc(val)}" title="${esc(opts.label(it))} - clique para filtrar">
+          const on = selVals(`f-${key}`).includes(val) ? " is-active" : "";
+          return `<button type="button" class="rank-bar${hot}${on}" data-filter-key="${esc(key)}" data-filter-val="${esc(val)}" title="${esc(opts.label(it))} - clique para filtrar">
             <span class="pos">${i + 1}</span>
             <span class="name">${opts.tag ? opts.tag(it) : ""}${esc(opts.label(it))}</span>
             <span class="track"><i style="width:${w}%"></i></span>
@@ -700,10 +872,9 @@ function isDiaUtil(ymd) {
 }
 
 function segsPainelCentralAtivos() {
-  const filtroSeg = ($("f-segmento") && $("f-segmento").value) || "";
-  if (filtroSeg && SEGMENTOS_PAINEL_CENTRAL.includes(filtroSeg)) return [filtroSeg];
-  if (filtroSeg) return []; // Empórios ou outro: card sem volume neste recorte
-  return SEGMENTOS_PAINEL_CENTRAL.slice();
+  const filtroSegs = selVals("f-segmento");
+  if (!filtroSegs.length) return SEGMENTOS_PAINEL_CENTRAL.slice();
+  return SEGMENTOS_PAINEL_CENTRAL.filter((s) => filtroSegs.includes(s));
 }
 
 function datasPainelCentral() {
@@ -735,7 +906,7 @@ function ultimoDiaUtilPainel() {
  * Card do dia operacional: Painel (entrada) × Central (IN), só Lojas e Mercearias.
  */
 function diaOperacionalCentral() {
-  const filtrada = ($("f-data") && $("f-data").value) || "";
+  const filtrada = selVals("f-data").sort().pop() || "";
   const datasPainel = PAINEL_READY ? datasPainelCentral() : [];
   const datasAudit = [...new Set((DATA.lancamentos || []).map((r) => r.data).filter(Boolean))].sort();
   const data =
@@ -854,7 +1025,7 @@ function renderDiaCentral() {
     : "Painel × Central (Lojas e Mercearias). Clique para filtrar este dia";
   const gruposHtml = d.grupos
     .map((g) => {
-      const on = ($("f-segmento") && $("f-segmento").value) === g.seg ? " is-on" : "";
+      const on = selVals("f-segmento").includes(g.seg) ? " is-on" : "";
       const unidadeLbl = g.unidades === 1 ? "unidade" : "unidades";
       return `<button type="button" class="dia-grupo${on}" data-filter-key="segmento" data-filter-val="${esc(g.seg)}" title="Filtrar ${esc(g.label)}">
         <span class="lbl">${esc(g.label)}</span>
@@ -865,7 +1036,7 @@ function renderDiaCentral() {
     })
     .join("");
   const recorde = recordeLojasCentral();
-  const recordeOn = recorde && ($("f-data") && $("f-data").value) === recorde.data;
+  const recordeOn = recorde && selVals("f-data").includes(recorde.data);
   const recordeHtml = recorde && recorde.lojas
     ? `<button type="button" class="dia-central-recorde${recordeOn ? " is-on" : ""}" data-dia="${esc(recorde.data)}" title="Dia em que a Central atendeu mais unidades (Painel × Central, Lojas e Mercearias). Clique para filtrar">
         <span class="lbl">Mais unidades no dia</span>
@@ -971,8 +1142,10 @@ function renderKpis() {
 
 function renderCentral() {
   const s = teamStats();
-  const x = execStats();
-  renderRankBars("top-lojas", x.lojas, {
+  const xLoja = execStats("loja");
+  const xTipo = execStats("tipo");
+  const xForn = execStats("forn");
+  renderRankBars("top-lojas", xLoja.lojas, {
     limit: 10,
     value: (it) => it.nfs,
     label: (it) => it.nome,
@@ -981,15 +1154,15 @@ function renderCentral() {
     filterKey: "loja",
     filterVal: (it) => it.nome,
   });
-  renderRankBars("top-tipos", x.tipos, {
+  renderRankBars("top-tipos", xTipo.tipos, {
     limit: 8,
     value: (it) => it.itens,
     label: (it) => TIPO_LABEL[it.nome] || it.nome,
-    fmt: (it) => `${fmt(it.itens)} | ${fmtPct(x.inc.length ? (it.itens / x.inc.length) * 100 : 0)}`,
+    fmt: (it) => `${fmt(it.itens)} | ${fmtPct(xTipo.inc.length ? (it.itens / xTipo.inc.length) * 100 : 0)}`,
     filterKey: "tipo",
     filterVal: (it) => it.nome,
   });
-  renderRankBars("top-forn", x.fornecedores, {
+  renderRankBars("top-forn", xForn.fornecedores, {
     limit: 10,
     value: (it) => it.nfs,
     label: (it) => shortName(it.nome, 34),
@@ -999,18 +1172,6 @@ function renderCentral() {
   });
   $("split-lanc").innerHTML = meter(s.lancCentral, s.lancLojas, "NFs incluidas pela Central", "incluidas nas lojas");
   $("split-aceite").innerHTML = meter(s.itensCentral, s.itensLojas, "itens aceitos pela Central", "aceitos nas lojas");
-  $("team").innerHTML = s.membros
-    .map((m) => {
-      const lead = m === s.membros[0] && m.nfs_lancadas > 0;
-      return `<div class="team-row${lead ? " lead" : ""}">
-        <div><div class="pname">${esc(m.nome)}</div><span class="muted">${esc(m.codigo)}</span></div>
-        <div><b>${fmt(m.nfs_lancadas)}</b><span class="muted">NFs</span></div>
-        <div><b>${fmt(m.lojas_atendidas.size)}</b><span class="muted">unidades</span></div>
-        <div><b>${fmt(m.itens_aceitos)}</b><span class="muted">itens aceitos</span></div>
-        <div><b>${fmt(m.exclusoes_nf + m.exclusoes_produto)}</b><span class="muted">exclusoes</span></div>
-      </div>`;
-    })
-    .join("") || `<div class="muted">Nenhuma pessoa do grupo Central de Recebimento na planilha.</div>`;
 }
 
 function renderOpsTable(rows) {
@@ -1419,6 +1580,7 @@ function setFluxoRunning(on) {
 }
 
 function setTab(tab) {
+  closeAllMsel();
   TAB = tab;
   const standalone = tab === "fluxo" || tab === "receb" || tab === "inc";
   document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
@@ -1448,7 +1610,6 @@ function setTab(tab) {
   if (!DATA) return;
   const tipos = tab === "ops" ? ["exclusao_nf", "exclusao_produto"] : DATA.filtros.tipos;
   fillSelect("f-tipo", tipos || [], "Todos os tipos", TIPO_LABEL);
-  $("f-tipo").disabled = false;
   render();
 }
 
@@ -1475,9 +1636,18 @@ function closeDrawer() {
 
 function bind() {
   setTodayDate();
-  ["q", "f-data", "f-loja", "f-forn", "f-tipo"].forEach((id) => $(id).addEventListener("input", render));
-  const fSeg = $("f-segmento");
-  if (fSeg) fSeg.addEventListener("input", () => { fillSelectLojas(); render(); });
+  ["f-data", "f-loja", "f-forn", "f-tipo"].forEach((id) => createMsel(id, render));
+  createMsel("f-segmento", () => {
+    fillSelectLojas();
+    render();
+  });
+  document.addEventListener("mousedown", (e) => {
+    Object.values(MSEL).forEach((m) => {
+      if (!m.host.contains(e.target) && !m.panel.contains(e.target)) m.close();
+    });
+  });
+  window.addEventListener("resize", () => closeAllMsel());
+  window.addEventListener("scroll", () => closeAllMsel());
   $("btn-csv").addEventListener("click", exportCsv);
   const home = $("btn-home");
   if (home) home.addEventListener("click", goHome);
@@ -1496,27 +1666,22 @@ function bind() {
   const scrim = $("drawer-scrim");
   if (scrim) scrim.addEventListener("click", closeDrawer);
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeDrawer();
+    if (e.key === "Escape") {
+      closeAllMsel();
+      closeDrawer();
+    }
   });
   document.body.addEventListener("click", (ev) => {
     const btnDia = ev.target.closest("[data-dia]");
     if (btnDia && btnDia.dataset.dia) {
-      const sel = $("f-data");
-      if (sel) {
-        sel.value = sel.value === btnDia.dataset.dia ? "" : btnDia.dataset.dia;
-        render();
-      }
+      if (MSEL["f-data"]) MSEL["f-data"].toggle(btnDia.dataset.dia);
       return;
     }
     const btn = ev.target.closest("[data-filter-key]");
     if (btn) {
       const map = { loja: "f-loja", forn: "f-forn", tipo: "f-tipo", segmento: "f-segmento" };
       const id = map[btn.dataset.filterKey];
-      if (id && $(id)) {
-        $(id).value = $(id).value === btn.dataset.filterVal ? "" : btn.dataset.filterVal;
-        if (id === "f-segmento") fillSelectLojas();
-        render();
-      }
+      if (id && MSEL[id]) MSEL[id].toggle(btn.dataset.filterVal);
       return;
     }
     const tr = ev.target.closest("tr[data-nf]");

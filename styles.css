@@ -225,7 +225,7 @@ body.drawer-open { overflow: hidden; }
 
 .filters {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) repeat(5, minmax(0, 1fr)) auto;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
   gap: 8px;
   margin: 0 0 14px;
   align-items: stretch;
@@ -245,6 +245,52 @@ body.drawer-open { overflow: hidden; }
 }
 .filters input::placeholder { color: #7a8490; }
 .filters select:disabled { opacity: 0.45; }
+.filters .msel { min-width: 0; }
+.filters .msel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 35px;
+  background: var(--bg-3);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.filters .msel-btn:focus-visible {
+  outline: 2px solid rgba(227, 27, 35, 0.35);
+  border-color: var(--accent);
+}
+.filters .msel-btn.is-open,
+.filters .msel-btn.has-value { border-color: var(--accent); }
+.filters .msel-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.filters .msel-caret {
+  flex: 0 0 auto;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--muted);
+}
+.filters .msel-btn.is-open .msel-caret { transform: rotate(180deg); }
+.rb-msel-panel .msel-group {
+  padding: 8px 8px 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
 
 .dia-central { margin: 0 0 12px; }
 .dia-central-wrap {
@@ -633,6 +679,11 @@ button.ghost:hover, a.ghost:hover { background: var(--accent); border-color: var
   text-align: center;
 }
 #view-inc .msg { white-space: normal; min-width: 280px; }
+#view-inc th.sortable { cursor: pointer; user-select: none; }
+#view-inc th.sortable:hover { color: var(--text); background: #181b22; }
+#view-inc th.sortable.is-sorted { color: var(--accent); }
+#view-inc th .sort-ind { display: inline-block; margin-left: 4px; font-size: 9px; opacity: 0.55; vertical-align: middle; }
+#view-inc th.sortable.is-sorted .sort-ind { opacity: 1; }
 
 .bars { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .bar-row { display: grid; grid-template-columns: 88px minmax(0, 1fr) 90px; gap: 8px; align-items: center; font-size: 12px; }

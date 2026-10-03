@@ -57,12 +57,11 @@
 
   <main class="wrap">
     <div class="filters" id="filters">
-      <input id="q" type="search" placeholder="Buscar NF, chave, produto, pessoa, justificativa..." />
-      <select id="f-data"><option value="">Todas as datas</option></select>
-      <select id="f-segmento"><option value="">Todos os grupos</option></select>
-      <select id="f-loja"><option value="">Todas as lojas</option></select>
-      <select id="f-forn"><option value="">Todos os fornecedores</option></select>
-      <select id="f-tipo"><option value="">Todos os tipos</option></select>
+      <div id="f-data"></div>
+      <div id="f-segmento"></div>
+      <div id="f-loja"></div>
+      <div id="f-forn"></div>
+      <div id="f-tipo"></div>
       <button class="ghost" id="btn-csv" type="button" title="Base tratada da juncao dos arquivos da pasta Bases">Exportar CSV</button>
     </div>
 
@@ -88,18 +87,12 @@
           <div id="top-forn" class="rank-bars"></div>
         </article>
       </div>
-      <div class="grid-2">
-        <article class="card">
-          <div class="lbl">Quem trata - Central vs Lojas</div>
-          <div id="split-lanc" class="split-block"></div>
-          <div class="lbl" style="margin-top:16px">Inconsistencias aceitas</div>
-          <div id="split-aceite" class="split-block"></div>
-        </article>
-        <article class="card">
-          <div class="lbl">Equipe da Central</div>
-          <div id="team" class="team-compact"></div>
-        </article>
-      </div>
+      <article class="card">
+        <div class="lbl">Quem trata - Central vs Lojas</div>
+        <div id="split-lanc" class="split-block"></div>
+        <div class="lbl" style="margin-top:16px">Inconsistencias aceitas</div>
+        <div id="split-aceite" class="split-block"></div>
+      </article>
     </section>
 
     <section id="view-inc" class="hidden">
@@ -164,14 +157,14 @@
           <table>
             <thead>
               <tr>
-                <th>Loja</th>
-                <th>Nota</th>
-                <th>Data</th>
-                <th>Inconsistencia</th>
-                <th>Contato</th>
-                <th>Setor</th>
-                <th>Atendente</th>
-                <th>Dias</th>
+                <th class="sortable" data-pd-sort="loja" scope="col" aria-sort="none" title="Ordenar por Loja">Loja<span class="sort-ind" aria-hidden="true">↕</span></th>
+                <th class="sortable" data-pd-sort="nota" scope="col" aria-sort="none" title="Ordenar por Nota">Nota<span class="sort-ind" aria-hidden="true">↕</span></th>
+                <th class="sortable" data-pd-sort="data" scope="col" aria-sort="none" title="Ordenar por Data">Data<span class="sort-ind" aria-hidden="true">↕</span></th>
+                <th class="sortable" data-pd-sort="inconsistencia" scope="col" aria-sort="none" title="Ordenar por Inconsistencia">Inconsistencia<span class="sort-ind" aria-hidden="true">↕</span></th>
+                <th class="sortable" data-pd-sort="contato" scope="col" aria-sort="none" title="Ordenar por Contato">Contato<span class="sort-ind" aria-hidden="true">↕</span></th>
+                <th class="sortable" data-pd-sort="setor" scope="col" aria-sort="none" title="Ordenar por Setor">Setor<span class="sort-ind" aria-hidden="true">↕</span></th>
+                <th class="sortable" data-pd-sort="atendente" scope="col" aria-sort="none" title="Ordenar por Atendente">Atendente<span class="sort-ind" aria-hidden="true">↕</span></th>
+                <th class="sortable" data-pd-sort="dias" scope="col" aria-sort="none" title="Ordenar por Dias">Dias<span class="sort-ind" aria-hidden="true">↕</span></th>
               </tr>
             </thead>
             <tbody id="pd-tbody"></tbody>
