@@ -708,27 +708,18 @@ function renderRankBars(id, items, opts) {
         .map((it, i) => {
           const w = (opts.value(it) / max) * 100;
           const hot = i === 0 ? " hot1" : i === 1 ? " hot2" : i === 2 ? " hot3" : "";
-          const key = opts.filterKey;
-          const val = opts.filterVal(it);
-          const on = selVals(`f-${key}`).includes(val) ? " is-active" : "";
-          return `<button type="button" class="rank-bar${hot}${on}" data-filter-key="${esc(key)}" data-filter-val="${esc(val)}" title="${esc(opts.label(it))} - clique para filtrar">
-            <span class="pos">${i + 1}</span>
+          const inner = `<span class="pos">${i + 1}</span>
             <span class="name">${opts.tag ? opts.tag(it) : ""}${esc(opts.label(it))}</span>
             <span class="track"><i style="width:${w}%"></i></span>
-            <span class="qty">${opts.fmt(it)}</span>
-          </button>`;
+            <span class="qty">${opts.fmt(it)}</span>`;
+          const key = opts.filterKey;
+          if (!key) return `<div class="rank-bar is-static${hot}" title="${esc(opts.label(it))}">${inner}</div>`;
+          const val = opts.filterVal(it);
+          const on = selVals(`f-${key}`).includes(val) ? " is-active" : "";
+          return `<button type="button" class="rank-bar${hot}${on}" data-filter-key="${esc(key)}" data-filter-val="${esc(val)}" title="${esc(opts.label(it))} - clique para filtrar">${inner}</button>`;
         })
         .join("")
-    : `<div class="muted">Sem dados no recorte atual.</div>`;
-}
-
-function meter(left, right, leftLabel, rightLabel) {
-  const tot = Math.max(1, (left || 0) + (right || 0));
-  const lp = ((left || 0) / tot) * 100;
-  const rp = 100 - lp;
-  return `<div class="meter"><i class="c" style="width:${lp}%"></i><i class="l" style="width:${rp}%"></i></div>
-    <div class="meter-leg"><span>Central ${fmt(left)} | ${fmtPct(lp)}</span><span>Lojas ${fmt(right)} | ${fmtPct(rp)}</span></div>
-    <div class="muted">${esc(leftLabel)} vs ${esc(rightLabel)}</div>`;
+    : `<div class="muted">${esc(opts.empty || "Sem dados no recorte atual.")}</div>`;
 }
 
 
@@ -1078,41 +1069,39 @@ function renderDiaCentral() {
 function renderKpis() {
   const t = DATA.totais;
   const headline = $("headline");
+  $("kpis").classList.toggle("kpis-4", TAB === "central");
   if (TAB === "central") {
     const s = teamStats();
     const x = execStats();
-    const taxa = x.lanc.length ? (x.nfsInc / x.lanc.length) * 100 : 0;
-    const topTipo = x.tipos[0];
-    const topLoja = x.lojas[0];
-    const topForn = x.fornecedores[0];
-    const tipoPct = topTipo && x.inc.length ? (topTipo.itens / x.inc.length) * 100 : 0;
-    const corTaxa = metaColorDown(taxa, 100);
-    const tomTaxa = metaToneDown(taxa, 100);
     const totVol = s.lancCentral + s.lancLojas;
     const pctVol = totVol ? (s.lancCentral / totVol) * 100 : 0;
     const corVol = metaColor(pctVol, 100);
     const tomVol = metaTone(pctVol, 100);
+    const pend = typeof window.pendenciasResumo === "function" ? window.pendenciasResumo() : { status: "carregando" };
+    const pendOk = pend.status === "ok";
+    const pendTom = pendOk ? (pend.total ? "bad" : "good") : "";
+    const pendVal = pendOk ? fmt(pend.total) : dash;
+    const pendSub = pendOk
+      ? `${fmt(pend.nfs)} NFs · ${fmt(pend.numLojas)} lojas · mais antiga ${fmt(pend.maxDias)} d`
+      : pend.status === "erro"
+        ? "erro ao ler a planilha"
+        : "carregando planilha...";
+    const dom = pendOk ? pend.topTipo : null;
+    const domNome = dom ? dom.nome : dash;
+    const domSub = dom
+      ? `${fmt(dom.qtd)} pendencia(s) · ${fmtPct((dom.qtd / pend.total) * 100)} do total`
+      : pendOk
+        ? "sem pendencias em aberto"
+        : pendSub;
     $("kpis").innerHTML = `
       <article class="card"><div class="lbl">NFs no periodo</div><div class="val">${fmt(x.lanc.length)}</div><div class="sub">lote ${fmt(t.nfs_entrada)}</div></article>
       <article class="card ${tomVol}"><div class="lbl">Central no volume</div><div class="val" style="color:${corVol}">${fmtPct(pctVol)}</div><div class="sub">${fmt(s.lancCentral)} NFs lancadas · meta 100%</div></article>
-      <article class="card ${tomTaxa}"><div class="lbl">Taxa de inconsistencia</div><div class="val" style="color:${corTaxa}">${fmtPct(taxa)}</div><div class="sub">lote ${fmtPct(t.taxa_nfs)} · meta 0%</div></article>
-      <article class="card"><div class="lbl">Inconsistencia dominante</div><div class="val-text" title="${esc(topTipo ? TIPO_LABEL[topTipo.nome] || topTipo.nome : dash)}">${esc(topTipo ? TIPO_LABEL[topTipo.nome] || topTipo.nome : dash)}</div><div class="sub">${topTipo ? fmtPct(tipoPct) + " dos itens" : ""}</div></article>
-      <article class="card"><div class="lbl">Loja critica</div><div class="val-text" title="${esc(topLoja ? topLoja.nome : dash)}">${esc(topLoja ? topLoja.nome : dash)}</div><div class="sub">${topLoja ? fmt(topLoja.nfs) + " NFs | " + fmtPct(topLoja.taxa) : ""}</div></article>
-      <article class="card warn"><div class="lbl">NFs inconsistentes</div><div class="val">${fmt(x.nfsInc)}</div><div class="sub">${fmt(x.inc.length)} itens</div></article>
-    `;
-    if (x.inc.length && topTipo && topLoja) {
-      headline.className = "headline";
-      headline.innerHTML = `<b>Leitura:</b> ${esc(TIPO_LABEL[topTipo.nome] || topTipo.nome)} concentra ${esc(fmtPct(tipoPct))} dos itens.
-        ${esc(topLoja.nome)} lidera com ${esc(fmt(topLoja.nfs))} NF(s)${topLoja.taxa != null ? " (" + fmtPct(topLoja.taxa) + " da entrada da loja)" : ""}.
-        ${topForn ? "Fornecedor em destaque: " + esc(shortName(topForn.nome, 42)) + " (" + fmt(topForn.nfs) + " NFs)." : ""}`;
-    } else {
-      headline.className = "headline ok";
-      headline.textContent = "Sem inconsistencias no recorte atual.";
-    }
-    return;
+      <article class="card ${pendTom} is-link" data-goto-tab="inc" role="link" tabindex="0" title="Abrir a aba Inconsistencias"><div class="lbl">Inconsistencias em aberto</div><div class="val">${pendVal}</div><div class="sub">${esc(pendSub)}</div><div class="sub card-link">ver na aba Inconsistencias →</div></article>
+      <article class="card is-link" data-goto-tab="inc" role="link" tabindex="0" title="Abrir a aba Inconsistencias"><div class="lbl">Inconsistencia dominante</div><div class="val-text" title="${esc(domNome)}">${esc(domNome)}</div><div class="sub">${esc(domSub)}</div></article>    `;
   }
   headline.textContent = "";
   headline.className = "headline hidden";
+  if (TAB === "central") return;
   const rows = TAB === "ops" ? filteredOps() : filteredInc();
   if (TAB === "ops") {
     $("kpis").innerHTML = `
@@ -1141,37 +1130,50 @@ function renderKpis() {
 }
 
 function renderCentral() {
-  const s = teamStats();
-  const xLoja = execStats("loja");
-  const xTipo = execStats("tipo");
-  const xForn = execStats("forn");
-  renderRankBars("top-lojas", xLoja.lojas, {
-    limit: 10,
-    value: (it) => it.nfs,
+  const pend = typeof window.pendenciasResumo === "function" ? window.pendenciasResumo() : { status: "carregando" };
+  const ok = pend.status === "ok";
+  const vazio = ok ? "Nenhuma pendencia em aberto." : pend.status === "erro" ? "Erro ao ler a planilha." : "Carregando planilha...";
+  const share = (qtd, total) => (total ? " | " + fmtPct((qtd / total) * 100) : "");
+  renderRankBars("top-lojas", ok ? pend.lojas : [], {
+    limit: 3,
+    value: (it) => it.qtd,
     label: (it) => it.nome,
-    tag: (it) => segTag(segmentoOf({ loja: it.nome })),
-    fmt: (it) => `${fmt(it.nfs)} NF | ${fmt(it.itens)} itens${it.taxa != null ? " | " + fmtPct(it.taxa) : ""}`,
-    filterKey: "loja",
-    filterVal: (it) => it.nome,
+    fmt: (it) => `${fmt(it.qtd)} pend. | ${fmt(it.nfs)} NF${share(it.qtd, pend.total)}`,
+    empty: vazio,
   });
-  renderRankBars("top-tipos", xTipo.tipos, {
-    limit: 8,
-    value: (it) => it.itens,
-    label: (it) => TIPO_LABEL[it.nome] || it.nome,
-    fmt: (it) => `${fmt(it.itens)} | ${fmtPct(xTipo.inc.length ? (it.itens / xTipo.inc.length) * 100 : 0)}`,
-    filterKey: "tipo",
-    filterVal: (it) => it.nome,
+  renderRankBars("top-tipos", ok ? pend.tipos : [], {
+    limit: 3,
+    value: (it) => it.qtd,
+    label: (it) => it.nome,
+    fmt: (it) => `${fmt(it.qtd)}${share(it.qtd, pend.total)}`,
+    empty: vazio,
   });
-  renderRankBars("top-forn", xForn.fornecedores, {
-    limit: 10,
-    value: (it) => it.nfs,
-    label: (it) => shortName(it.nome, 34),
-    fmt: (it) => `${fmt(it.nfs)} NF | ${fmt(it.itens)} itens`,
-    filterKey: "forn",
-    filterVal: (it) => it.nome,
+  renderRankBars("top-forn", ok ? pend.lojasAntigas : [], {
+    limit: 3,
+    value: (it) => it.qtd,
+    label: (it) => it.nome,
+    fmt: (it) => `${fmt(it.qtd)} pend. | mais antiga ${fmt(it.maxDias)} d`,
+    empty: ok ? "Nenhuma pendencia com 2 dias ou mais." : vazio,
   });
-  $("split-lanc").innerHTML = meter(s.lancCentral, s.lancLojas, "NFs incluidas pela Central", "incluidas nas lojas");
-  $("split-aceite").innerHTML = meter(s.itensCentral, s.itensLojas, "itens aceitos pela Central", "aceitos nas lojas");
+  $("idade-pend").innerHTML = ok && pend.total ? ageStack(pend.idades, pend.total) : `<div class="muted">${esc(vazio)}</div>`;
+}
+
+function ageStack(idades, total) {
+  const bar = idades
+    .filter((b) => b.qtd)
+    .map((b) => `<i style="width:${(b.qtd / total) * 100}%;background:${b.color}" title="${esc(b.label)}: ${fmt(b.qtd)}"></i>`)
+    .join("");
+  const leg = idades
+    .map(
+      (b) => `<div class="age-leg-item${b.qtd ? "" : " is-zero"}">
+        <span class="age-dot" style="background:${b.color}"></span>
+        <span class="age-leg-lbl">${esc(b.label)}</span>
+        <strong>${fmt(b.qtd)}</strong>
+        <span class="muted">${fmtPct((b.qtd / total) * 100)}</span>
+      </div>`
+    )
+    .join("");
+  return `<div class="meter age-meter">${bar}</div><div class="age-leg">${leg}</div>`;
 }
 
 function renderOpsTable(rows) {
@@ -1652,6 +1654,23 @@ function bind() {
   const home = $("btn-home");
   if (home) home.addEventListener("click", goHome);
   document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
+  const kpis = $("kpis");
+  kpis.addEventListener("click", (e) => {
+    const card = e.target.closest("[data-goto-tab]");
+    if (card) setTab(card.dataset.gotoTab);
+  });
+  kpis.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    const card = e.target.closest("[data-goto-tab]");
+    if (!card) return;
+    e.preventDefault();
+    setTab(card.dataset.gotoTab);
+  });
+  document.addEventListener("pendencias:update", () => {
+    if (!DATA || TAB !== "central") return;
+    renderKpis();
+    renderCentral();
+  });
   document.querySelectorAll("[data-fluxo-mode]").forEach((b) => {
     b.addEventListener("click", () => setFluxoMode(b.dataset.fluxoMode));
   });

@@ -186,6 +186,7 @@ body.drawer-open { overflow: hidden; }
   align-items: stretch;
   margin-bottom: 20px;
 }
+.kpis.kpis-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .kpis > .card {
   display: flex;
   flex-direction: column;
@@ -222,6 +223,11 @@ body.drawer-open { overflow: hidden; }
 .card.warn .val { color: var(--warn); }
 .card.bad .val { color: var(--bad); }
 .card.good .val { color: var(--good); }
+.card.is-link { cursor: pointer; transition: border-color 0.15s, transform 0.15s; }
+.card.is-link:hover { border-color: var(--muted); transform: translateY(-1px); }
+.card.is-link:focus-visible { outline: 2px solid var(--good); outline-offset: 2px; }
+.card .sub.card-link { padding-top: 2px; margin-top: 0; font-weight: 700; }
+.card.is-link:hover .card-link { color: inherit; text-decoration: underline; }
 
 .filters {
   display: grid;
@@ -493,6 +499,8 @@ body.drawer-open { overflow: hidden; }
   border-radius: 8px;
 }
 .rank-bar:hover { background: #22262e; }
+.rank-bar.is-static { cursor: default; }
+.rank-bar.is-static:hover { background: transparent; }
 .rank-bar .pos {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
@@ -580,6 +588,22 @@ body.drawer-open { overflow: hidden; }
   display: flex;
 }
 .meter i { display: block; height: 100%; }
+.age-meter { height: 16px; margin-top: 4px; }
+.age-leg {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.age-leg-item { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.age-leg-item.is-zero { opacity: 0.45; }
+.age-dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.age-leg-lbl { color: var(--muted); }
+@media (max-width: 720px) {
+  .age-leg { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .meter .c { background: var(--accent); }
 .meter .l { background: #8b949e; }
 .meter-leg {
@@ -779,6 +803,7 @@ tr.clickable { cursor: pointer; }
 
 @media (max-width: 1200px) {
   .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .kpis.kpis-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .filters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .filters #q { grid-column: 1 / -1; }
   .grid-2 { grid-template-columns: 1fr; }
@@ -927,7 +952,7 @@ tr.clickable { cursor: pointer; }
 }
 
 @media (max-width: 480px) {
-  .kpis { grid-template-columns: 1fr; }
+  .kpis, .kpis.kpis-4 { grid-template-columns: 1fr; }
   .card .val { font-size: 20px; }
   .team-row { grid-template-columns: 1fr; }
   .team-row > div:not(:first-child) {

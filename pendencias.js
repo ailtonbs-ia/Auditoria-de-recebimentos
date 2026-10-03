@@ -296,6 +296,7 @@
     } finally {
       state.loading = false;
       render();
+      document.dispatchEvent(new CustomEvent("pendencias:update"));
     }
   }
 
@@ -521,9 +522,50 @@
     document.querySelectorAll("[data-pd-sheet]").forEach((a) => a.setAttribute("href", SHEET_URL));
   }
 
+  window.pendenciasResumo = function () {
+    if (!state.loaded && !state.loading && !state.error) load();
+    if (!state.loaded) return { status: state.error ? "erro" : "carregando" };
+    const rows = state.rows;
+    const byQtd = (a, b) => b.qtd - a.qtd;
+    const tipos = groupCount(rows, "tipo").sort(byQtd);
+    const lojaNfs = new Map();
+    rows.forEach((r) => {
+      if (!lojaNfs.has(r.loja)) lojaNfs.set(r.loja, new Set());
+      lojaNfs.get(r.loja).add(r.nota);
+    });
+    const lojas = groupCount(rows, "loja")
+      .map((it) => ({ ...it, nfs: lojaNfs.get(it.nome).size }))
+      .sort(byQtd);
+    const antigas = rows.filter((r) => r.dias >= 2);
+    const lojaMax = new Map();
+    antigas.forEach((r) => lojaMax.set(r.loja, Math.max(lojaMax.get(r.loja) || 0, r.dias)));
+    const lojasAntigas = groupCount(antigas, "loja")
+      .map((it) => ({ ...it, maxDias: lojaMax.get(it.nome) }))
+      .sort((a, b) => b.qtd - a.qtd || b.maxDias - a.maxDias);
+    return {
+      status: "ok",
+      tipos,
+      lojas,
+      lojasAntigas,
+      totalAntigas: antigas.length,
+      idades: AGE_BUCKETS.map((b) => ({
+        label: b.label,
+        color: b.color,
+        qtd: rows.filter((r) => r.idade === b.id).length,
+      })),
+      topTipo: tipos[0] || null,
+      total: rows.length,
+      nfs: new Set(rows.map((r) => `${r.codLoja}|${r.nota}`)).size,
+      numLojas: new Set(rows.map((r) => r.codLoja || r.loja)).size,
+      maxDias: rows.length ? Math.max(...rows.map((r) => r.dias)) : 0,
+    };
+  };
+
   window.initPendenciasDash = function () {
     bind();
     if (!state.loaded && !state.loading) load();
     else render();
   };
+
+  load();
 })();
