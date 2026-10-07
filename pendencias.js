@@ -42,7 +42,6 @@
     inconsistencia: "Inconsistencia",
     contato: "Contato",
     setor: "Setor",
-    atendente: "Atendente",
     dias: "Dias",
   };
 
@@ -389,7 +388,7 @@
       count.textContent = `${num(rows.length)} pendencia(s) - ordenadas por ${SORT_LABEL[state.sort.key]} (${dirLabel})`;
     }
     if (!rows.length) {
-      tb.innerHTML = `<tr class="empty"><td colspan="8" class="muted">Nenhuma pendencia com os filtros atuais.</td></tr>`;
+      tb.innerHTML = `<tr class="empty"><td colspan="7" class="muted">Nenhuma pendencia com os filtros atuais.</td></tr>`;
       return;
     }
     const sorted = rows.slice().sort(compareRows);
@@ -403,7 +402,6 @@
           <td class="msg" data-label="Inconsistencia"><span class="pd-tipo">${escH(r.tipo)}</span><br><span class="muted">${escH(r.inconsistencia)}</span></td>
           <td data-label="Contato">${r.contato === SEM_CONTATO ? '<span class="muted">-</span>' : escH(r.contato)}</td>
           <td data-label="Setor">${r.setor === SEM_SETOR ? '<span class="pd-missing">Sem setor</span>' : escH(r.setor)}</td>
-          <td data-label="Atendente">${escH(r.atendente)}</td>
           <td class="num" data-label="Dias"><span class="pd-age" style="background:${bucket ? bucket.color : "var(--muted)"}">${num(r.dias)}</span></td>
         </tr>`;
       })
