@@ -6,7 +6,7 @@ window.initRecebimentosDash = function initRecebimentosDash() {
 
   var DATA_PATH = "Bases/Painel de Controle de Recebimentos.txt";
   var PAGE_SIZE = 50;
-  var SIT_ORDER = ["RECEBIDA", "XML", "RECEBIMENTO", "CONFERENCIA", "NOTA LIBERADA"];
+  var SIT_ORDER = ["RECEBIDA", "XML", "ORCAMENTO", "RECEBIMENTO", "CONFERENCIA", "NOTA LIBERADA"];
   var EXCLUDED_EMPRESA_CODES = { C001: true, C038: true, R066: true, C034: true };
   var EXCLUDED_FORNECEDOR_CODES = { "331": true };
   var RIO_GRANDE_NAME = "RIO GRANDE COMERCIO DE CARNE";
@@ -514,6 +514,7 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     if (!s) return "—";
     if (s === "NOTA LIBERADA") return "Nota liberada";
     if (s === "CONFERENCIA") return "Conferência";
+    if (s === "ORCAMENTO") return "Orçamento";
     return s.charAt(0) + s.slice(1).toLowerCase();
   }
 
@@ -584,6 +585,7 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     var s = String(raw || "").trim();
     if (!s) return "";
     s = s.replace(/CONFER[\u00C9\u00CA\u00C8]NCIA/gi, "CONFERENCIA");
+    s = s.replace(/OR[\u00C7\uFFFD]AMENTO/gi, "ORCAMENTO");
     return s;
   }
 

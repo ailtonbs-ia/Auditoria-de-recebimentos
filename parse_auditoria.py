@@ -10,11 +10,13 @@ from __future__ import annotations
 import json
 import os
 import re
+import subprocess
 import sys
 import unicodedata
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+from typing import Iterable, Iterator
 
 BASE = Path(__file__).resolve().parent
 
@@ -40,6 +42,28 @@ PAINEL_HEADER = (
     "VALOR_TOTAL;SITUACAO_;SITUACAO;SEQNOTAFISCAL;SEQAUXNOTAFISCAL;"
     "SITUACAO_CONFERENCIA;USUARIO_CONFERENCIA;CHAVE_ACESSO"
 )
+PAINEL_COLS = PAINEL_HEADER.split(";")
+# Extrato do ERP (cabecalho NUMERONF): coluna padrao do painel -> coluna do extrato.
+PAINEL_ERP_MAP = {
+    "NUMERO_NF": "NUMERONF",
+    "SERIE": "SERIENF",
+    "EMPRESA": "EMPRESA",
+    "DATA_EMISSAO": "DTAEMISSAO",
+    "DATA_ENTRADA": "DTAENTRADA",
+    "CGO": "CODGERALOPER",
+    "VALOR_TOTAL": "VLRTOTALNF",
+    "SITUACAO_": "SITUACAO",
+    "SITUACAO_CONFERENCIA": "STATUSCARGA",
+    "USUARIO_CONFERENCIA": "USUARIORF",
+    "CHAVE_ACESSO": "NFECHAVEACESSO",
+}
+PAINEL_SITUACAO_SIGLA = {
+    "RECEBIDA": "I",
+    "XML": "X",
+    "RECEBIMENTO": "R",
+    "CONFERENCIA": "C",
+    "NOTA LIBERADA": "L",
+}
 
 COLS = [
     "seqaux",
@@ -289,39 +313,44 @@ def listar_lotes_auditoria() -> list[Path]:
 
 
 def consolidar_base() -> tuple[Path, int]:
-    """Une TXTs de auditoria da pasta Bases em Auditoria de Recebimentos.txt (base 0), sem duplicar eventos."""
+    """Une TXTs de auditoria da pasta Bases em Auditoria de Recebimentos.txt (base 0), sem duplicar eventos.
+
+    A base 0 e cumulativa: a ultima versao do git entra antes, para nao perder eventos
+    quando o arquivo e sobrescrito por um extrato de periodo menor.
+    """
     dest = TXT_CANDIDATES[0]
     lotes = listar_lotes_auditoria()
     if not lotes:
         raise FileNotFoundError("Nenhum TXT de auditoria (cabecalho SEQAUXNOTAFISCAL) na pasta Bases.")
 
+    fontes: list[Iterable[str]] = []
+    historico = historico_git(dest)
+    if historico and historico[0].strip().lstrip("\ufeff").upper().replace("\t", ";").startswith("SEQAUXNOTAFISCAL"):
+        fontes.append(historico)
+    fontes.extend(_linhas_arquivo(path) for path in lotes)
+
     ordered: dict[tuple[str, ...], list[str]] = {}
     lidos = 0
     duplicados = 0
-    for path in lotes:
-        header = _first_line(path)
-        delim = sniff_delim(header)
-        with path.open("r", encoding="cp1252", errors="replace", newline="") as fh:
-            first = True
-            for line in fh:
-                if first:
-                    first = False
-                    continue
-                if not line.strip():
-                    continue
-                parts = split_audit_row(line, delim)
-                if not parts:
-                    continue
-                if parts[0].strip().upper() == "SEQAUXNOTAFISCAL":
-                    continue
-                lidos += 1
-                key = row_key(parts)
-                if key in ordered:
-                    duplicados += 1
-                    if row_melhor(ordered[key], parts):
-                        ordered[key] = parts
-                    continue
-                ordered[key] = parts
+    for linhas in fontes:
+        it = iter(linhas)
+        delim = sniff_delim(next(it, ""))
+        for line in it:
+            if not line.strip():
+                continue
+            parts = split_audit_row(line, delim)
+            if not parts:
+                continue
+            if parts[0].strip().upper() == "SEQAUXNOTAFISCAL":
+                continue
+            lidos += 1
+            key = row_key(parts)
+            if key in ordered:
+                duplicados += 1
+                if row_melhor(ordered[key], parts):
+                    ordered[key] = parts
+                continue
+            ordered[key] = parts
 
     tmp = dest.with_suffix(dest.suffix + ".tmp")
     with tmp.open("w", encoding="cp1252", errors="replace", newline="\r\n") as out:
@@ -336,9 +365,102 @@ def consolidar_base() -> tuple[Path, int]:
     return dest, len(lotes)
 
 
+def painel_layout(header: str) -> str:
+    h = header.strip().lstrip("\ufeff").upper().replace("\t", ";")
+    if h.startswith("NUMERO_NF"):
+        return "padrao"
+    if h.startswith("NUMERONF"):
+        return "erp"
+    return ""
+
+
 def is_painel_txt(path: Path) -> bool:
-    header = _first_line(path).strip().upper().replace("\t", ";")
-    return header.startswith("NUMERO_NF")
+    return bool(painel_layout(_first_line(path)))
+
+
+def painel_delim(header: str) -> str:
+    return "\t" if "\t" in header and ";" not in header else ";"
+
+
+def painel_data_padrao(raw: str) -> str:
+    s = raw.strip()
+    m = re.match(r"^(\d{2})/(\d{2})/(\d{4})", s)
+    if m:
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}-00.00.00.000000"
+    return s
+
+
+def painel_row_from_erp(line: str, delim: str, idx: dict[str, int]) -> list[str] | None:
+    parts = line.rstrip("\r\n").split(delim)
+    extra = len(parts) - len(idx)
+    if extra < 0:
+        return None
+    fi = idx.get("FORNECEDOR")
+    if extra > 0 and fi is not None:
+        parts = parts[:fi] + [delim.join(parts[fi : fi + extra + 1])] + parts[fi + extra + 1 :]
+
+    def g(name: str) -> str:
+        j = idx.get(name)
+        return parts[j].strip() if j is not None and j < len(parts) else ""
+
+    row = {col: g(src) for col, src in PAINEL_ERP_MAP.items()}
+    seqpessoa, fornecedor = g("SEQPESSOA"), g("FORNECEDOR")
+    row["FORNECEDOR"] = f"{seqpessoa}-{fornecedor}" if seqpessoa else fornecedor
+    row["DATA_EMISSAO"] = painel_data_padrao(row["DATA_EMISSAO"])
+    row["DATA_ENTRADA"] = painel_data_padrao(row["DATA_ENTRADA"])
+    row["SITUACAO"] = PAINEL_SITUACAO_SIGLA.get(fold(row["SITUACAO_"]).upper(), "")
+    return [row.get(col, "") for col in PAINEL_COLS]
+
+
+def ler_linhas_painel(lines: Iterable[str]) -> Iterator[list[str]]:
+    """Linhas de um TXT do painel no layout padrao, convertendo o extrato do ERP se preciso."""
+    it = iter(lines)
+    header = next(it, "")
+    layout = painel_layout(header)
+    if not layout:
+        return
+    delim = painel_delim(header)
+    idx = {c.strip().upper(): i for i, c in enumerate(header.strip().lstrip("\ufeff").split(delim))}
+    for line in it:
+        if not line.strip():
+            continue
+        if layout == "erp":
+            parts = painel_row_from_erp(line, delim, idx)
+        else:
+            parts = split_painel_row(line, delim)
+        if not parts:
+            continue
+        if parts[0].strip().upper() in ("NUMERO_NF", "NUMERONF"):
+            continue
+        yield parts
+
+
+def _linhas_arquivo(path: Path) -> Iterator[str]:
+    with path.open("r", encoding="cp1252", errors="replace", newline="") as fh:
+        yield from fh
+
+
+def historico_git(dest: Path) -> list[str]:
+    """Linhas da ultima versao consolidada do arquivo no git (HEAD)."""
+    try:
+        res = subprocess.run(
+            ["git", "show", f"HEAD:./{dest.name}"],
+            cwd=dest.parent,
+            capture_output=True,
+            timeout=180,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if res.returncode != 0:
+        return []
+    return res.stdout.decode("cp1252", errors="replace").splitlines()
+
+
+def painel_historico_git(dest: Path) -> list[str]:
+    lines = historico_git(dest)
+    if not lines or painel_layout(lines[0]) != "padrao":
+        return []
+    return lines
 
 
 def split_painel_row(line: str, delim: str) -> list[str] | None:
@@ -385,41 +507,38 @@ def listar_lotes_painel() -> list[Path]:
 
 
 def consolidar_painel() -> tuple[Path, int]:
-    """Une TXTs do painel de recebimento em Painel de Controle de Recebimentos.txt."""
+    """Une TXTs do painel de recebimento em Painel de Controle de Recebimentos.txt.
+
+    Se o proprio destino foi sobrescrito por um extrato do ERP (cabecalho NUMERONF),
+    a ultima versao consolidada do git entra antes como historico.
+    """
     dest = PAINEL_DEST
     lotes = listar_lotes_painel()
+    fontes: list[Iterable[str]] = []
+    if dest.exists() and painel_layout(_first_line(dest)) == "erp":
+        historico = painel_historico_git(dest)
+        if historico:
+            print(f"Painel: historico do git ({len(historico) - 1} linhas) mesclado ao extrato do ERP.")
+            fontes.append(historico)
+    fontes.extend(_linhas_arquivo(path) for path in lotes)
     if not lotes:
-        print("Nenhum TXT de painel (cabecalho NUMERO_NF) na pasta Bases.")
+        print("Nenhum TXT de painel (cabecalho NUMERO_NF ou NUMERONF) na pasta Bases.")
         return dest, 0
 
     ordered: dict[str, list[str]] = {}
     order: list[str] = []
     lidos = 0
     atualizados = 0
-    for path in lotes:
-        header = _first_line(path)
-        delim = sniff_delim(header)
-        with path.open("r", encoding="cp1252", errors="replace", newline="") as fh:
-            first = True
-            for line in fh:
-                if first:
-                    first = False
-                    continue
-                if not line.strip():
-                    continue
-                parts = split_painel_row(line, delim)
-                if not parts:
-                    continue
-                if parts[0].strip().upper() == "NUMERO_NF":
-                    continue
-                lidos += 1
-                key = painel_row_key(parts)
-                if key in ordered:
-                    ordered[key] = parts
-                    atualizados += 1
-                    continue
+    for linhas in fontes:
+        for parts in ler_linhas_painel(linhas):
+            lidos += 1
+            key = painel_row_key(parts)
+            if key in ordered:
                 ordered[key] = parts
-                order.append(key)
+                atualizados += 1
+                continue
+            ordered[key] = parts
+            order.append(key)
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".tmp")
@@ -429,7 +548,7 @@ def consolidar_painel() -> tuple[Path, int]:
             out.write(";".join(ordered[key]) + "\n")
     os.replace(tmp, dest)
     print(
-        f"Painel: {len(ordered)} notas unicas de {len(lotes)} arquivo(s) "
+        f"Painel: {len(ordered)} notas unicas de {len(fontes)} fonte(s) "
         f"({lidos} lidas, {atualizados} atualizadas) -> {dest.name}"
     )
     return dest, len(lotes)
