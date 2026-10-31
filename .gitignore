@@ -1,0 +1,3 @@
+tools/python/
+tools/logs/
+tools/*.lock
