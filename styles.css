@@ -703,11 +703,16 @@ button.ghost:hover, a.ghost:hover { background: var(--accent); border-color: var
   text-align: center;
 }
 #view-inc .msg { white-space: normal; min-width: 280px; }
-#view-inc th.sortable { cursor: pointer; user-select: none; }
-#view-inc th.sortable:hover { color: var(--text); background: #181b22; }
-#view-inc th.sortable.is-sorted { color: var(--accent); }
-#view-inc th .sort-ind { display: inline-block; margin-left: 4px; font-size: 9px; opacity: 0.55; vertical-align: middle; }
-#view-inc th.sortable.is-sorted .sort-ind { opacity: 1; }
+#view-inc th.sortable,
+#view-ops th.sortable { cursor: pointer; user-select: none; }
+#view-inc th.sortable:hover,
+#view-ops th.sortable:hover { color: var(--text); background: #181b22; }
+#view-inc th.sortable.is-sorted,
+#view-ops th.sortable.is-sorted { color: var(--accent); }
+#view-inc th .sort-ind,
+#view-ops th .sort-ind { display: inline-block; margin-left: 4px; font-size: 9px; opacity: 0.55; vertical-align: middle; }
+#view-inc th.sortable.is-sorted .sort-ind,
+#view-ops th.sortable.is-sorted .sort-ind { opacity: 1; }
 
 .bars { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .bar-row { display: grid; grid-template-columns: 88px minmax(0, 1fr) 90px; gap: 8px; align-items: center; font-size: 12px; }

@@ -38,6 +38,7 @@
   const SORT_LABEL = {
     loja: "Loja",
     nota: "Nota",
+    fornecedor: "Fornecedor",
     data: "Data",
     inconsistencia: "Inconsistencia",
     contato: "Contato",
@@ -53,6 +54,8 @@
         return `${r.codLoja} ${r.loja}`;
       case "nota":
         return Number(r.nota) || 0;
+      case "fornecedor":
+        return r.fornecedor;
       case "data":
         return r.ymd || "";
       case "inconsistencia":
@@ -168,6 +171,7 @@
       codLoja: lojaCode(rec["COD. LOJA"]),
       loja: titleCase(fold(rec.LOJA)) || "Sem loja",
       nota: String(rec.NOTA ?? "").replace(/\.0+$/, "").trim(),
+      fornecedor: String(rec.FORNECEDOR || "").replace(/\s+/g, " ").trim(),
       data: dt.br,
       ymd: dt.ymd,
       inconsistencia,
@@ -388,7 +392,7 @@
       count.textContent = `${num(rows.length)} pendencia(s) - ordenadas por ${SORT_LABEL[state.sort.key]} (${dirLabel})`;
     }
     if (!rows.length) {
-      tb.innerHTML = `<tr class="empty"><td colspan="7" class="muted">Nenhuma pendencia com os filtros atuais.</td></tr>`;
+      tb.innerHTML = `<tr class="empty"><td colspan="8" class="muted">Nenhuma pendencia com os filtros atuais.</td></tr>`;
       return;
     }
     const sorted = rows.slice().sort(compareRows);
@@ -398,6 +402,7 @@
         return `<tr>
           <td data-label="Loja">${r.codLoja ? `<span class="muted">${escH(r.codLoja)}</span> ` : ""}${escH(r.loja)}</td>
           <td class="num" data-label="Nota">${escH(r.nota || "-")}</td>
+          <td data-label="Fornecedor">${r.fornecedor ? escH(r.fornecedor) : '<span class="muted">-</span>'}</td>
           <td class="num" data-label="Data">${escH(r.data || "-")}</td>
           <td class="msg" data-label="Inconsistencia"><span class="pd-tipo">${escH(r.tipo)}</span><br><span class="muted">${escH(r.inconsistencia)}</span></td>
           <td data-label="Contato">${r.contato === SEM_CONTATO ? '<span class="muted">-</span>' : escH(r.contato)}</td>

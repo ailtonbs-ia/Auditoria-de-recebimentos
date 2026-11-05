@@ -109,6 +109,22 @@ function metaLabel(data) {
 let DATA = null;
 let TAB = "central";
 
+const OPS_SORT_LABEL = {
+  data: "Data",
+  loja: "Loja",
+  grupo: "Grupo",
+  nf: "NF",
+  fornecedor: "Fornecedor",
+  tipo: "Tipo",
+  produto: "Produto / campo",
+  de: "De",
+  para: "Para",
+  pessoa: "Pessoa",
+  equipe: "Equipe",
+};
+let opsSort = { key: "data", dir: "desc" };
+const opsCollator = new Intl.Collator("pt-BR", { sensitivity: "base", numeric: true });
+
 /** Painel de recebimento (cruzamento Produtividade × entradas do dia). */
 const PAINEL_PATH = "Bases/Painel de Controle de Recebimentos.txt";
 const PAINEL_EXCL_EMP = { C001: true, C038: true, R066: true, C034: true };
@@ -223,7 +239,7 @@ function createMsel(id, onChange) {
     const n = selected.length;
     if (!n) {
       textEl.textContent = placeholder;
-      btn.title = placeholder;
+      btn.removeAttribute("title");
     } else if (n === 1) {
       textEl.textContent = labelOf(selected[0]);
       btn.title = labelOf(selected[0]);
@@ -511,17 +527,30 @@ function parsePainelCsv(text) {
   return rows;
 }
 
+function chaveAuditoria(r) {
+  if (!r || isLojaFora(r.loja) || isForn331(r)) return "";
+  return String(r.chave || "").trim();
+}
+
+/** Chaves da auditoria. Central = inclusão (IN) ou ação da aba Operacional. */
 function chavesAuditoriaSets() {
   const central = new Set();
   const qualquerIn = new Set();
-  (DATA && DATA.lancamentos ? DATA.lancamentos : []).forEach((r) => {
-    if (isLojaFora(r.loja) || isForn331(r)) return;
-    const c = String(r.chave || "").trim();
-    if (!c) return;
-    qualquerIn.add(c);
+  const conhecida = new Set();
+  const marca = (r, c, inclusao) => {
+    conhecida.add(c);
+    if (inclusao) qualquerIn.add(c);
     if (r.usuario_eh_central || isCentralCode(r.usuario)) central.add(c);
+  };
+  (DATA && DATA.lancamentos ? DATA.lancamentos : []).forEach((r) => {
+    const c = chaveAuditoria(r);
+    if (c) marca(r, c, true);
   });
-  return { central, qualquerIn };
+  (DATA && DATA.operacional ? DATA.operacional : []).forEach((r) => {
+    const c = chaveAuditoria(r);
+    if (c) marca(r, c, false);
+  });
+  return { central, qualquerIn, conhecida };
 }
 
 async function loadPainel() {
@@ -539,6 +568,7 @@ async function loadPainel() {
     PAINEL_READY = false;
   } finally {
     PAINEL_LOADING = false;
+    fillDatas();
     if (DATA && TAB === "central") renderDiaCentral();
   }
 }
@@ -894,12 +924,12 @@ function ultimoDiaUtilPainel() {
 }
 
 /**
- * Card do dia operacional: Painel (entrada) × Central (IN), só Lojas e Mercearias.
+ * Card do dia operacional: Painel (entrada) × Central (inclusão ou aba Operacional), só Lojas e Mercearias.
  */
 function diaOperacionalCentral() {
   const filtrada = selVals("f-data").sort().pop() || "";
   const datasPainel = PAINEL_READY ? datasPainelCentral() : [];
-  const datasAudit = [...new Set((DATA.lancamentos || []).map((r) => r.data).filter(Boolean))].sort();
+  const datasAudit = [...new Set((DATA.lancamentos || []).concat(DATA.operacional || []).map((r) => r.data).filter(Boolean))].sort();
   const data =
     filtrada ||
     (PAINEL_READY ? ultimoDiaUtilPainel() : "") ||
@@ -907,16 +937,17 @@ function diaOperacionalCentral() {
     datasAudit[datasAudit.length - 1] ||
     "";
   const segsOk = new Set(segsPainelCentralAtivos());
-  const { central, qualquerIn } = chavesAuditoriaSets();
+  const { central, qualquerIn, conhecida } = chavesAuditoriaSets();
 
   const bySeg = {};
   SEGMENTOS_PAINEL_CENTRAL.forEach((s) => {
-    bySeg[s] = { nfsDia: 0, nfsCentral: 0, semIn: 0, unidades: new Set() };
+    bySeg[s] = { nfsDia: 0, nfsCentral: 0, semIn: 0, ausentes: 0, unidades: new Set() };
   });
 
   let nfs = 0;
   let totalDia = 0;
   let semIn = 0;
+  let ausentes = 0;
   const unidades = new Set();
 
   if (PAINEL_READY && data) {
@@ -938,6 +969,10 @@ function diaOperacionalCentral() {
       } else if (!qualquerIn.has(r.chave)) {
         semIn += 1;
         if (g) g.semIn += 1;
+        if (!conhecida.has(r.chave)) {
+          ausentes += 1;
+          if (g) g.ausentes += 1;
+        }
       }
     }
   }
@@ -959,6 +994,8 @@ function diaOperacionalCentral() {
   }).filter(Boolean);
 
   const pct = totalDia ? (nfs / totalDia) * 100 : 0;
+  const auditoriaAte = (DATA && DATA.periodo && DATA.periodo.fim) || "";
+  const semCobertura = Boolean(auditoriaAte && data > auditoriaAte && totalDia > 0 && ausentes === totalDia);
   return {
     data,
     filtrado: Boolean(filtrada),
@@ -969,6 +1006,8 @@ function diaOperacionalCentral() {
     pct,
     unidades: unidades.size,
     grupos,
+    semCobertura,
+    auditoriaAte,
   };
 }
 
@@ -1011,18 +1050,24 @@ function renderDiaCentral() {
     el.innerHTML = `<div class="dia-central-card" style="cursor:default"><div class="dia-central-when"><span class="lbl">Dia operacional</span><strong>${dash}</strong></div></div>`;
     return;
   }
-  const titulo = d.filtrado
-    ? "Painel × Central (Lojas e Mercearias). Clique para limpar o filtro desta data"
-    : "Painel × Central (Lojas e Mercearias). Clique para filtrar este dia";
+  const titulo = d.semCobertura
+    ? `Essas notas ainda não estão na auditoria (vai até ${fmtData(d.auditoriaAte)}). A aba Operacional mostra o que a Central fez até essa data.`
+    : d.filtrado
+      ? "Painel × Central (Lojas e Mercearias). Clique para limpar o filtro desta data"
+      : "Painel × Central (Lojas e Mercearias). Clique para filtrar este dia";
   const gruposHtml = d.grupos
     .map((g) => {
       const on = selVals("f-segmento").includes(g.seg) ? " is-on" : "";
       const unidadeLbl = g.unidades === 1 ? "unidade" : "unidades";
+      const cor = d.semCobertura ? "inherit" : metaColor(g.pct, 100);
+      const sub = d.semCobertura
+        ? `em ${fmt(g.unidades)} ${unidadeLbl} · fora da auditoria`
+        : `${fmtPct(g.pct)} · em ${fmt(g.unidades)} ${unidadeLbl} · ${fmt(g.semIn)} sem inclusão`;
       return `<button type="button" class="dia-grupo${on}" data-filter-key="segmento" data-filter-val="${esc(g.seg)}" title="Filtrar ${esc(g.label)}">
         <span class="lbl">${esc(g.label)}</span>
-        <b style="color:${metaColor(g.pct, 100)}">${fmt(g.nfsCentral)} <small>de ${fmt(g.nfsDia)}</small></b>
-        <div class="track"><i style="width:${g.pct}%;background:${metaColor(g.pct, 100)}"></i></div>
-        <div class="sub">${fmtPct(g.pct)} · em ${fmt(g.unidades)} ${unidadeLbl} · ${fmt(g.semIn)} sem inclusão</div>
+        <b style="color:${cor}">${fmt(g.nfsCentral)} <small>de ${fmt(g.nfsDia)}</small></b>
+        <div class="track"><i style="width:${g.pct}%;background:${cor}"></i></div>
+        <div class="sub">${sub}</div>
       </button>`;
     })
     .join("");
@@ -1039,9 +1084,12 @@ function renderDiaCentral() {
   const totalVal = d.loading ? dash : fmt(d.totalDia);
   const totalSub = d.loading ? "carregando painel…" : `em ${fmt(d.unidades)} ${unidadeLbl}`;
   const centralVal = d.loading ? dash : fmt(d.nfs);
+  const centralCor = d.loading || d.semCobertura ? "inherit" : metaColor(d.pct, 100);
   const centralSub = d.loading
     ? "aguarde"
-    : `de ${fmt(d.totalDia)} notas · ${fmtPct(d.pct)} · ${fmt(d.semIn)} sem inclusão`;
+    : d.semCobertura
+      ? `auditoria só vai até ${fmtData(d.auditoriaAte)}`
+      : `de ${fmt(d.totalDia)} notas · ${fmtPct(d.pct)} · ${fmt(d.semIn)} sem inclusão`;
   el.innerHTML = `<div class="dia-central-wrap">
     <div class="dia-central-top">
       <button type="button" class="dia-central-card" data-dia="${esc(d.data)}" title="${esc(titulo)}">
@@ -1056,7 +1104,7 @@ function renderDiaCentral() {
         </div>
         <div class="dia-central-stat">
           <span class="lbl">Central tratou</span>
-          <b style="color:${d.loading ? "inherit" : metaColor(d.pct, 100)}">${centralVal}</b>
+          <b style="color:${centralCor}">${centralVal}</b>
           <div class="sub">${centralSub}</div>
         </div>
       </button>
@@ -1176,13 +1224,71 @@ function ageStack(idades, total) {
   return `<div class="meter age-meter">${bar}</div><div class="age-leg">${leg}</div>`;
 }
 
+function opsSortValue(row, key) {
+  switch (key) {
+    case "data":
+      return row.iso || `${row.data || ""}T${row.hora || ""}`;
+    case "loja":
+      return row.loja || "";
+    case "grupo":
+      return segmentoLabel(segmentoOf(row));
+    case "nf":
+      return `${row.numeronf || ""}/${row.serienf || ""}`;
+    case "fornecedor":
+      return row.fornecedor || "";
+    case "tipo":
+      return TIPO_LABEL[row.tipo] || row.tipo || "";
+    case "produto":
+      return `${row.produto || row.campo || ""} ${row.produto && row.campo ? row.campo : ""}`.trim();
+    case "de":
+      return row.valor_antigo || "";
+    case "para":
+      return row.valor_novo || "";
+    case "pessoa":
+      return row.usuario_nome || userLabel(row.usuario);
+    case "equipe":
+      return grupoLabel(row.usuario, row.usuario_grupo);
+    default:
+      return "";
+  }
+}
+
+function compareOps(a, b) {
+  const va = opsSortValue(a, opsSort.key);
+  const vb = opsSortValue(b, opsSort.key);
+  let c = opsCollator.compare(String(va), String(vb));
+  if (opsSort.dir === "desc") c = -c;
+  return c || String(b.iso || "").localeCompare(String(a.iso || ""));
+}
+
+function renderOpsSortHeaders() {
+  document.querySelectorAll("#view-ops th[data-ops-sort]").forEach((th) => {
+    const active = th.dataset.opsSort === opsSort.key;
+    th.classList.toggle("is-sorted", active);
+    th.setAttribute("aria-sort", active ? (opsSort.dir === "asc" ? "ascending" : "descending") : "none");
+    const ind = th.querySelector(".sort-ind");
+    if (ind) ind.textContent = active ? (opsSort.dir === "asc" ? "▲" : "▼") : "↕";
+  });
+}
+
+function setOpsSort(key) {
+  if (!OPS_SORT_LABEL[key]) return;
+  if (opsSort.key === key) opsSort.dir = opsSort.dir === "asc" ? "desc" : "asc";
+  else opsSort = { key, dir: key === "data" || key === "nf" ? "desc" : "asc" };
+  renderOpsTable(filteredOps());
+}
+
 function renderOpsTable(rows) {
-  $("count-ops").textContent = `${rows.length} evento(s) operacional(is) - exclusao de NF/item`;
+  const dirLabel = opsSort.dir === "asc" ? "crescente" : "decrescente";
+  $("count-ops").textContent = `${rows.length} evento(s) operacional(is) - ordenados por ${OPS_SORT_LABEL[opsSort.key]} (${dirLabel})`;
+  renderOpsSortHeaders();
   if (!rows.length) {
     $("tb-ops").innerHTML = `<tr class="empty"><td colspan="11" class="muted">Nenhum registro com os filtros atuais.</td></tr>`;
     return;
   }
   $("tb-ops").innerHTML = rows
+    .slice()
+    .sort(compareOps)
     .slice(0, 1500)
     .map(
       (i) => `<tr class="clickable" data-nf="${esc(i.seqaux)}|${esc(i.chave)}">
@@ -1654,6 +1760,13 @@ function bind() {
   const home = $("btn-home");
   if (home) home.addEventListener("click", goHome);
   document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
+  const viewOps = $("view-ops");
+  if (viewOps) {
+    viewOps.addEventListener("click", (ev) => {
+      const th = ev.target.closest("th[data-ops-sort]");
+      if (th) setOpsSort(th.dataset.opsSort);
+    });
+  }
   const kpis = $("kpis");
   kpis.addEventListener("click", (e) => {
     const card = e.target.closest("[data-goto-tab]");
@@ -1708,15 +1821,24 @@ function bind() {
   });
 }
 
+/** Auditoria filtra por DTAHORALTERACAO; Painel (aba Central) por DTAENTRADA, a partir do inicio da auditoria. */
+function fillDatas() {
+  if (!DATA) return;
+  const audit = new Set((DATA.filtros && DATA.filtros.datas) || []);
+  const inicio = (DATA.periodo && DATA.periodo.inicio) || "";
+  const painel = PAINEL_READY ? datasPainelCentral().filter((d) => !inicio || d >= inicio) : [];
+  const datas = [...new Set([...audit, ...painel])].sort().reverse();
+  const labels = Object.fromEntries(datas.map((d) => [d, audit.has(d) ? fmtData(d) : `${fmtData(d)} · só Painel`]));
+  fillSelect("f-data", datas, "Todas as datas", labels);
+}
+
 function boot(data) {
   DATA = data;
   (DATA.inconsistencias || []).sort((a, b) => String(b.iso || "").localeCompare(String(a.iso || "")));
   (DATA.operacional || []).sort((a, b) => String(b.iso || "").localeCompare(String(a.iso || "")));
   (DATA.nfs || []).sort((a, b) => String(b.iso || "").localeCompare(String(a.iso || "")));
   $("meta").textContent = metaLabel(data);
-  const datas = data.filtros.datas || [];
-  const dataLabels = Object.fromEntries(datas.map((d) => [d, fmtData(d)]));
-  fillSelect("f-data", datas, "Todas as datas", dataLabels);
+  fillDatas();
   const segs = (data.filtros && data.filtros.segmentos && data.filtros.segmentos.length)
     ? data.filtros.segmentos
     : SEGMENTOS_COBERTURA.filter((s) => coberturaLista().some((e) => e.segmento === s));

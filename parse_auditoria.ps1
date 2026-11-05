@@ -490,6 +490,7 @@ $nfs = @{}
 $produtosNf = @{}
 $volumeLojas = @{}
 $volumeDias = @{}
+$datasEventos = New-Object "System.Collections.Generic.HashSet[string]"
 $lojasSet = New-Object "System.Collections.Generic.HashSet[string]"
 $fornSet = New-Object "System.Collections.Generic.HashSet[string]"
 $userSet = New-Object "System.Collections.Generic.HashSet[string]"
@@ -527,6 +528,7 @@ try {
     $antigo = $parts[12]
     $novo = $parts[13]
     $dt = ParseDt $parts[14]
+    if ($dt.data) { [void]$datasEventos.Add($dt.data) }
     $usuario = $parts[15]
     $chave = if ($parts.Length -gt 20) { ($parts[19..($parts.Length-1)] -join ";") } else { $parts[19] }
     $key = "$seqaux|$chave"
@@ -726,7 +728,7 @@ foreach ($nome in ($lojaNf.Keys | Sort-Object { -$lojaNf[$_].Count }, { $_ })) {
   if ($rankingLoja.Count -ge 15) { break }
 }
 
-$datas = @($volumeDias.Keys + $diaInc.Keys | Where-Object { $_ } | Select-Object -Unique | Sort-Object)
+$datas = @(@($datasEventos) + @($volumeDias.Keys) + @($diaInc.Keys) | Where-Object { $_ } | Select-Object -Unique | Sort-Object)
 $porDia = New-Object System.Collections.Generic.List[object]
 foreach ($d in $datas) {
   $nInc = ($inconsistencias | Where-Object { $_.data -eq $d } | ForEach-Object { $_.nf_id } | Select-Object -Unique).Count

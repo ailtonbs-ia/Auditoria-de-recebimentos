@@ -1,8 +1,8 @@
-# Registra a tarefa agendada que roda auto_push.ps1 todos os dias as 19:00.
+# Registra a tarefa agendada que roda auto_push.ps1 todos os dias as 18:00.
 #   powershell -ExecutionPolicy Bypass -File tools\instalar_tarefa.ps1
 #   powershell -ExecutionPolicy Bypass -File tools\instalar_tarefa.ps1 -Remover
 param(
-  [string]$Horario = "19:00",
+  [string]$Horario = "18:00",
   [switch]$Remover
 )
 $ErrorActionPreference = "Stop"

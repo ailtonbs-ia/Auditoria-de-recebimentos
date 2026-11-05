@@ -847,6 +847,7 @@ def parse(path: Path) -> dict:
     produtos_por_nf: dict[str, dict[str, str]] = defaultdict(dict)
     volume_lojas: dict[str, int] = defaultdict(int)
     volume_dias: dict[str, int] = defaultdict(int)
+    datas_eventos: set[str] = set()
     lojas_set: dict[str, str] = {}
     fornecedores_set: set[str] = set()
     usuarios_set: set[str] = set()
@@ -870,6 +871,8 @@ def parse(path: Path) -> dict:
             if eh_forn_331(row.get("seqpessoa", ""), row.get("fornecedor", "")):
                 continue
             total_eventos += 1
+            if row["data"]:
+                datas_eventos.add(row["data"])
             op = (row["operacao"] or "").strip().upper()
             ops_count[op] += 1
             key = nf_key(row)
@@ -1180,7 +1183,7 @@ def parse(path: Path) -> dict:
             }
         )
 
-    datas = sorted({d for d in list(volume_dias) + list(dia_inc) if d})
+    datas = sorted({d for d in list(datas_eventos) + list(volume_dias) + list(dia_inc) if d})
     por_dia = [
         {
             "data": d,
