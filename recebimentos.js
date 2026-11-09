@@ -37,11 +37,11 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     headerSub: document.getElementById("rb-headerSub"),
     footerMeta: null,
     fileInput: document.getElementById("rb-fileInput"),
-    fDataDe: document.getElementById("rb-fDataDe"),
-    fDataAte: document.getElementById("rb-fDataAte"),
+    fMesEntrada: document.getElementById("rb-fMesEntrada"),
     fSituacao: document.getElementById("rb-fSituacao"),
     fGrupo: document.getElementById("rb-fGrupo"),
     fEmpresa: document.getElementById("rb-fEmpresa"),
+    fFornecedor: document.getElementById("rb-fFornecedor"),
     kpiGrid: document.getElementById("rb-kpiGrid"),
     kpiCaption: document.getElementById("rb-kpiCaption"),
     funilBars: document.getElementById("rb-funilBars"),
@@ -133,37 +133,17 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     return m ? m[1] : "";
   }
 
-  /** Converte dd/mm/yyyy → YYYY-MM-DD (ou "" se incompleto/inválido). */
-  function brDateToIso(raw) {
-    var s = String(raw || "").trim();
-    if (!s) return "";
-    var m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    if (!m) return "";
-    var dd = Number(m[1]);
-    var mm = Number(m[2]);
-    var yyyy = Number(m[3]);
-    if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return "";
-    var iso =
-      String(yyyy) +
-      "-" +
-      String(mm).padStart(2, "0") +
-      "-" +
-      String(dd).padStart(2, "0");
-    var dt = new Date(iso + "T00:00:00");
-    if (isNaN(dt) || dt.getFullYear() !== yyyy || dt.getMonth() + 1 !== mm || dt.getDate() !== dd) {
-      return "";
-    }
-    return iso;
-  }
-
   var CAL_MONTHS = [
     "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
     "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
   ];
-  var CAL_WEEK = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+  var CAL_MONTHS_SHORT = [
+    "Jan", "Fev", "Mar", "Abr", "Mai", "Jun",
+    "Jul", "Ago", "Set", "Out", "Nov", "Dez",
+  ];
   var calPopover = null;
   var calAnchor = null;
-  var calView = { y: 0, m: 0 };
+  var calView = { y: 0 };
 
   function pad2(n) {
     return String(n).padStart(2, "0");
@@ -173,31 +153,36 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     return String(y) + "-" + pad2(m) + "-" + pad2(d);
   }
 
-  function parseIsoParts(iso) {
-    var p = String(iso || "").split("-");
-    if (p.length !== 3) return null;
-    return { y: Number(p[0]), m: Number(p[1]), d: Number(p[2]) };
+  function selectedMonthYm(textEl) {
+    if (!textEl) return "";
+    var ym = textEl.dataset.ym || "";
+    return /^\d{4}-\d{2}$/.test(ym) ? ym : "";
   }
 
-  function dateOutOfBounds(iso, minD, maxD) {
-    if (!iso) return true;
-    if (minD && iso < minD) return true;
-    if (maxD && iso > maxD) return true;
-    return false;
+  function formatMonthLabel(ym) {
+    var p = String(ym || "").match(/^(\d{4})-(\d{2})$/);
+    if (!p) return "";
+    var m = Number(p[2]);
+    if (m < 1 || m > 12) return "";
+    return CAL_MONTHS[m - 1] + " " + p[1];
   }
 
-  function shiftMonth(y, m, delta) {
-    var nm = m + delta;
-    var ny = y;
-    while (nm < 1) {
-      nm += 12;
-      ny -= 1;
-    }
-    while (nm > 12) {
-      nm -= 12;
-      ny += 1;
-    }
-    return { y: ny, m: nm };
+  function monthRange(ym) {
+    var p = String(ym || "").match(/^(\d{4})-(\d{2})$/);
+    if (!p) return { de: "", ate: "" };
+    var y = Number(p[1]);
+    var m = Number(p[2]);
+    if (m < 1 || m > 12) return { de: "", ate: "" };
+    var last = new Date(y, m, 0).getDate();
+    return { de: isoFromYmd(y, m, 1), ate: isoFromYmd(y, m, last) };
+  }
+
+  function yearIntersectsRange(y, minD, maxD) {
+    var start = isoFromYmd(y, 1, 1);
+    var end = isoFromYmd(y, 12, 31);
+    if (minD && end < minD) return false;
+    if (maxD && start > maxD) return false;
+    return true;
   }
 
   function monthIntersectsRange(y, m, minD, maxD) {
@@ -226,19 +211,27 @@ window.initRecebimentosDash = function initRecebimentosDash() {
       var maxD = calAnchor.dataset.maxDate || "";
       var action = btn.getAttribute("data-cal-action");
       if (action === "prev") {
-        calView = shiftMonth(calView.y, calView.m, -1);
+        if (!yearIntersectsRange(calView.y - 1, minD, maxD)) return;
+        calView.y -= 1;
         renderCalPopover(minD, maxD);
         return;
       }
       if (action === "next") {
-        calView = shiftMonth(calView.y, calView.m, 1);
+        if (!yearIntersectsRange(calView.y + 1, minD, maxD)) return;
+        calView.y += 1;
         renderCalPopover(minD, maxD);
         return;
       }
       if (action === "pick") {
-        var iso = btn.getAttribute("data-iso") || "";
-        if (!iso || dateOutOfBounds(iso, minD, maxD)) return;
-        calAnchor.value = formatDateBR(iso);
+        var ym = btn.getAttribute("data-ym") || "";
+        var parts = ym.match(/^(\d{4})-(\d{2})$/);
+        if (!parts) return;
+        var y = Number(parts[1]);
+        var m = Number(parts[2]);
+        if (!monthIntersectsRange(y, m, minD, maxD)) return;
+        calAnchor.dataset.ym = ym;
+        calAnchor.value = formatMonthLabel(ym);
+        calAnchor.classList.add("has-value");
         closeCalPopover();
         applyFilters();
       }
@@ -259,49 +252,30 @@ window.initRecebimentosDash = function initRecebimentosDash() {
 
   function renderCalPopover(minD, maxD) {
     var pop = ensureCalPopover();
-    var selectedIso = calAnchor ? brDateToIso(calAnchor.value) : "";
-    var first = new Date(calView.y, calView.m - 1, 1);
-    var startWeekday = first.getDay();
-    var daysInMonth = new Date(calView.y, calView.m, 0).getDate();
-    var prev = shiftMonth(calView.y, calView.m, -1);
-    var next = shiftMonth(calView.y, calView.m, 1);
-    var prevOk = monthIntersectsRange(prev.y, prev.m, minD, maxD);
-    var nextOk = monthIntersectsRange(next.y, next.m, minD, maxD);
-    var cells = [];
-    var i;
-    for (i = 0; i < startWeekday; i += 1) cells.push(null);
-    for (i = 1; i <= daysInMonth; i += 1) cells.push(i);
-    while (cells.length % 7 !== 0) cells.push(null);
-
+    var selected = selectedMonthYm(calAnchor);
+    var prevOk = yearIntersectsRange(calView.y - 1, minD, maxD);
+    var nextOk = yearIntersectsRange(calView.y + 1, minD, maxD);
     var html =
       '<div class="cal-head">' +
-      '<button type="button" class="cal-nav" data-cal-action="prev" aria-label="Mês anterior"' +
+      '<button type="button" class="cal-nav" data-cal-action="prev" aria-label="Ano anterior"' +
       (prevOk ? "" : " disabled") +
       ">‹</button>" +
-      '<div class="cal-title">' + esc(CAL_MONTHS[calView.m - 1]) + " " + calView.y + "</div>" +
-      '<button type="button" class="cal-nav" data-cal-action="next" aria-label="Próximo mês"' +
+      '<div class="cal-title">' + calView.y + "</div>" +
+      '<button type="button" class="cal-nav" data-cal-action="next" aria-label="Próximo ano"' +
       (nextOk ? "" : " disabled") +
       ">›</button>" +
       "</div>" +
-      '<div class="cal-weekdays">' +
-      CAL_WEEK.map(function (w) { return "<span>" + w + "</span>"; }).join("") +
-      "</div>" +
-      '<div class="cal-grid">';
+      '<div class="cal-months">';
 
-    for (i = 0; i < cells.length; i += 1) {
-      var day = cells[i];
-      if (!day) {
-        html += '<span aria-hidden="true"></span>';
-        continue;
-      }
-      var iso = isoFromYmd(calView.y, calView.m, day);
-      var disabled = dateOutOfBounds(iso, minD, maxD);
-      var cls = "cal-day";
-      if (selectedIso === iso) cls += " is-selected";
+    for (var m = 1; m <= 12; m += 1) {
+      var ym = String(calView.y) + "-" + pad2(m);
+      var disabled = !monthIntersectsRange(calView.y, m, minD, maxD);
+      var cls = "cal-month";
+      if (selected === ym) cls += " is-selected";
       html +=
         '<button type="button" class="' + cls + '"' +
-        ' data-cal-action="pick" data-iso="' + iso + '"' +
-        (disabled ? " disabled" : "") + ">" + day + "</button>";
+        ' data-cal-action="pick" data-ym="' + ym + '"' +
+        (disabled ? " disabled" : "") + ">" + CAL_MONTHS_SHORT[m - 1] + "</button>";
     }
     html += "</div>";
     pop.innerHTML = html;
@@ -312,9 +286,9 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     var rect = textEl.getBoundingClientRect();
     var top = rect.bottom + 6;
     var left = rect.left;
-    if (left + 280 > window.innerWidth - 8) left = window.innerWidth - 288;
+    if (left + 248 > window.innerWidth - 8) left = window.innerWidth - 256;
     if (left < 8) left = 8;
-    if (top + 320 > window.innerHeight - 8) top = Math.max(8, rect.top - 326);
+    if (top + 230 > window.innerHeight - 8) top = Math.max(8, rect.top - 236);
     calPopover.style.top = top + "px";
     calPopover.style.left = left + "px";
   }
@@ -325,20 +299,13 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     calAnchor = textEl;
     var minD = textEl.dataset.minDate || "";
     var maxD = textEl.dataset.maxDate || "";
-    var selectedIso = brDateToIso(textEl.value);
-    var startIso = selectedIso;
-    if (!startIso) {
-      startIso = textEl === els.fDataAte ? maxD || minD : minD || maxD;
+    var ym = selectedMonthYm(textEl);
+    var y = ym ? Number(ym.slice(0, 4)) : 0;
+    if (!y) {
+      var ref = maxD || minD;
+      y = ref ? Number(ref.slice(0, 4)) : new Date().getFullYear();
     }
-    var p = parseIsoParts(startIso);
-    if (p) {
-      calView.y = p.y;
-      calView.m = p.m;
-    } else {
-      var now = new Date();
-      calView.y = now.getFullYear();
-      calView.m = now.getMonth() + 1;
-    }
+    calView.y = y;
     renderCalPopover(minD, maxD);
     ensureCalPopover().classList.remove("hidden");
     positionCalPopover(textEl);
@@ -369,7 +336,7 @@ window.initRecebimentosDash = function initRecebimentosDash() {
 
   function setDateBounds(textEl, minD, maxD, hint) {
     if (!textEl) return;
-    textEl.title = hint || "Clique para selecionar a data";
+    textEl.title = hint || "Clique para selecionar o mês";
     if (minD) textEl.dataset.minDate = minD;
     else delete textEl.dataset.minDate;
     if (maxD) textEl.dataset.maxDate = maxD;
@@ -379,6 +346,8 @@ window.initRecebimentosDash = function initRecebimentosDash() {
   function clearDateField(textEl) {
     if (!textEl) return;
     textEl.value = "";
+    delete textEl.dataset.ym;
+    textEl.classList.remove("has-value");
   }
 
   function parseMoney(raw) {
@@ -654,6 +623,7 @@ window.initRecebimentosDash = function initRecebimentosDash() {
   var mselSituacao = null;
   var mselGrupo = null;
   var mselEmpresa = null;
+  var mselFornecedor = null;
 
   function closeAllMultiSelects(except) {
     for (var i = 0; i < multiSelects.length; i++) {
@@ -664,8 +634,10 @@ window.initRecebimentosDash = function initRecebimentosDash() {
   function createMultiSelect(host, opts) {
     opts = opts || {};
     var placeholder = opts.placeholder || "Todos";
+    var plural = opts.plural || "selecionadas";
     var searchable = !!opts.searchable;
     var alignEnd = !!opts.alignEnd;
+    var panelMinWidth = opts.panelMinWidth || 0;
     var onChange = opts.onChange || function () {};
     var selected = [];
     var options = [];
@@ -712,7 +684,7 @@ window.initRecebimentosDash = function initRecebimentosDash() {
         btn.classList.add("has-value");
         btn.title = labelOf(selected[0]);
       } else {
-        textEl.textContent = n + " selecionadas";
+        textEl.textContent = n + " " + plural;
         btn.classList.add("has-value");
         btn.title = selected.map(labelOf).join(", ");
       }
@@ -780,7 +752,7 @@ window.initRecebimentosDash = function initRecebimentosDash() {
 
     function positionPanel() {
       var rect = btn.getBoundingClientRect();
-      var width = Math.max(rect.width, alignEnd ? 260 : rect.width);
+      var width = Math.max(rect.width, alignEnd ? 260 : rect.width, panelMinWidth);
       var left = alignEnd ? rect.right - width : rect.left;
       if (left < 8) left = 8;
       if (left + width > window.innerWidth - 8) {
@@ -932,6 +904,9 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     if (mselEmpresa) {
       mselEmpresa.setOptions(empresasForGrupos(mselGrupo ? mselGrupo.getValues() : []));
     }
+    if (mselFornecedor) {
+      mselFornecedor.setOptions(uniqueSorted(allRows.map(function (r) { return r.fornecedor; })));
+    }
 
     var minD = "";
     var maxD = "";
@@ -945,17 +920,18 @@ window.initRecebimentosDash = function initRecebimentosDash() {
       minD && maxD
         ? "Período na base: " + formatDateBR(minD) + " a " + formatDateBR(maxD)
         : "";
-    setDateBounds(els.fDataDe, minD, maxD, hint);
-    setDateBounds(els.fDataAte, minD, maxD, hint);
+    setDateBounds(els.fMesEntrada, minD, maxD, hint);
   }
 
   function getFilters() {
+    var range = monthRange(selectedMonthYm(els.fMesEntrada));
     return {
-      de: brDateToIso(els.fDataDe.value),
-      ate: brDateToIso(els.fDataAte.value),
+      de: range.de,
+      ate: range.ate,
       situacao: mselSituacao ? mselSituacao.getValues() : [],
       grupo: mselGrupo ? mselGrupo.getValues() : [],
       empresa: mselEmpresa ? mselEmpresa.getValues() : [],
+      fornecedor: mselFornecedor ? mselFornecedor.getValues() : [],
     };
   }
 
@@ -966,6 +942,7 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     if (!opts.ignoreSituacao && f.situacao && f.situacao.length && f.situacao.indexOf(r.situacao) < 0) return false;
     if (f.grupo && f.grupo.length && f.grupo.indexOf(segmentoEmpresa(r.empresa)) < 0) return false;
     if (f.empresa && f.empresa.length && f.empresa.indexOf(r.empresa) < 0) return false;
+    if (f.fornecedor && f.fornecedor.length && f.fornecedor.indexOf(r.fornecedor) < 0) return false;
     return true;
   }
 
@@ -1577,11 +1554,11 @@ window.initRecebimentosDash = function initRecebimentosDash() {
   });
 
   document.getElementById("rb-btnClearFilters").addEventListener("click", function () {
-    clearDateField(els.fDataDe);
-    clearDateField(els.fDataAte);
+    clearDateField(els.fMesEntrada);
     if (mselSituacao) mselSituacao.clear();
     if (mselGrupo) mselGrupo.clear();
     if (mselEmpresa) mselEmpresa.clear();
+    if (mselFornecedor) mselFornecedor.clear();
     closeAllMultiSelects();
     populateFilterOptions();
     applyFilters();
@@ -1605,7 +1582,14 @@ window.initRecebimentosDash = function initRecebimentosDash() {
   mselEmpresa = createMultiSelect(els.fEmpresa, {
     placeholder: "Todas",
     searchable: true,
+    onChange: applyFilters,
+  });
+  mselFornecedor = createMultiSelect(els.fFornecedor, {
+    placeholder: "Todos",
+    plural: "selecionados",
+    searchable: true,
     alignEnd: true,
+    panelMinWidth: 360,
     onChange: applyFilters,
   });
 
@@ -1618,8 +1602,7 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     if (e.key === "Escape") closeAllMultiSelects();
   });
 
-  bindBrDateField(els.fDataDe);
-  bindBrDateField(els.fDataAte);
+  bindBrDateField(els.fMesEntrada);
 
   if (els.btnExportExcel) {
     els.btnExportExcel.addEventListener("click", exportFilteredExcel);

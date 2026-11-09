@@ -94,11 +94,11 @@
   display: grid;
   overflow: visible;
   grid-template-columns:
-    minmax(0, 1fr)
-    minmax(0, 1fr)
-    minmax(0, 1.05fr)
     minmax(0, 0.95fr)
-    minmax(0, 1.15fr);
+    minmax(0, 0.95fr)
+    minmax(0, 0.85fr)
+    minmax(0, 1.1fr)
+    minmax(0, 1.3fr);
   gap: 8px;
   margin: 0;
   align-items: end;
@@ -325,6 +325,10 @@
   background: rgba(227, 27, 35, 0.08);
 }
 
+#view-receb .date-field .date-br.has-value {
+  border-color: var(--accent);
+}
+
 #view-receb .date-field:focus-within .date-br {
   outline: 2px solid rgba(227, 27, 35, 0.35);
   border-color: var(--accent);
@@ -333,7 +337,7 @@
 #rb-date-popover.date-popover {
   position: fixed;
   z-index: 4000;
-  width: 280px;
+  width: 248px;
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -381,52 +385,35 @@
   color: var(--accent);
 }
 
-#rb-date-popover .cal-weekdays,
-#rb-date-popover .cal-grid {
+#rb-date-popover .cal-months {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
 }
 
-#rb-date-popover .cal-weekdays {
-  margin-bottom: 4px;
-}
-
-#rb-date-popover .cal-weekdays span {
-  text-align: center;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--muted);
-  text-transform: uppercase;
-}
-
-#rb-date-popover .cal-day {
-  height: 32px;
+#rb-date-popover .cal-month {
+  height: 34px;
   border: 0;
   border-radius: 8px;
   background: transparent;
   color: var(--text);
   font: inherit;
   font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
 }
 
-#rb-date-popover .cal-day:hover:not(:disabled) {
+#rb-date-popover .cal-month:hover:not(:disabled) {
   background: rgba(227, 27, 35, 0.12);
   color: var(--accent);
 }
 
-#rb-date-popover .cal-day.is-selected {
+#rb-date-popover .cal-month.is-selected {
   background: var(--accent);
   color: #fff;
 }
 
-#rb-date-popover .cal-day.is-outside {
-  color: var(--muted);
-  opacity: 0.45;
-}
-
-#rb-date-popover .cal-day:disabled {
+#rb-date-popover .cal-month:disabled {
   opacity: 0.28;
   cursor: not-allowed;
 }

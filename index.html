@@ -57,7 +57,7 @@
 
   <main class="wrap">
     <div class="filters" id="filters">
-      <div id="f-data"></div>
+      <div id="f-data" hidden></div>
       <div id="f-segmento"></div>
       <div id="f-loja"></div>
       <div id="f-forn"></div>
@@ -227,19 +227,10 @@
             </div>
             <div class="filters">
               <div class="field">
-                <label for="rb-fDataDe">Entrada de</label>
+                <label for="rb-fMesEntrada">Mês de entrada</label>
                 <div class="date-field">
-                  <input type="text" id="rb-fDataDe" class="date-br" placeholder="dd/mm/yyyy" readonly autocomplete="off" />
-                  <button type="button" class="date-picker-btn" aria-label="Abrir calendário" title="Selecionar data">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M7 3v3M17 3v3M4 8h16M5 5h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>
-                  </button>
-                </div>
-              </div>
-              <div class="field">
-                <label for="rb-fDataAte">Entrada até</label>
-                <div class="date-field">
-                  <input type="text" id="rb-fDataAte" class="date-br" placeholder="dd/mm/yyyy" readonly autocomplete="off" />
-                  <button type="button" class="date-picker-btn" aria-label="Abrir calendário" title="Selecionar data">
+                  <input type="text" id="rb-fMesEntrada" class="date-br" placeholder="Todos" readonly autocomplete="off" />
+                  <button type="button" class="date-picker-btn" aria-label="Abrir seletor de mês" title="Selecionar mês">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M7 3v3M17 3v3M4 8h16M5 5h14a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z"/></svg>
                   </button>
                 </div>
@@ -255,6 +246,10 @@
               <div class="field">
                 <label for="rb-fEmpresa-btn">Empresa / loja</label>
                 <div id="rb-fEmpresa" class="msel"></div>
+              </div>
+              <div class="field">
+                <label for="rb-fFornecedor-btn">Fornecedor</label>
+                <div id="rb-fFornecedor" class="msel"></div>
               </div>
             </div>
           </article>
