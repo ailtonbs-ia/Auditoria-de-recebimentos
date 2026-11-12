@@ -8,7 +8,6 @@ window.initRecebimentosDash = function initRecebimentosDash() {
   var PAGE_SIZE = 50;
   var SIT_ORDER = ["RECEBIDA", "XML", "ORCAMENTO", "RECEBIMENTO", "CONFERENCIA", "NOTA LIBERADA"];
   var EXCLUDED_EMPRESA_CODES = { C001: true, C038: true, R066: true, C034: true };
-  var EXCLUDED_FORNECEDOR_CODES = { "331": true };
   var RIO_GRANDE_NAME = "RIO GRANDE COMERCIO DE CARNE";
   var RIO_GRANDE_KEEP_CODE = "10";
   var SEGMENTO_LABEL = {
@@ -510,14 +509,12 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     return (i >= 0 ? s.slice(0, i) : s).trim();
   }
 
-  /** Regras fixas: exclui C001/C038/R066/C034, fornecedor 331 e Rio Grande (exceto código 10). */
+  /** Regras fixas: exclui C001/C038/R066/C034 e Rio Grande (exceto código 10). */
   function isBusinessExcluded(row) {
     var emp = empresaCode(row.empresa);
     if (EXCLUDED_EMPRESA_CODES[emp]) return true;
 
     var fornCode = fornecedorCode(row.fornecedor);
-    if (EXCLUDED_FORNECEDOR_CODES[fornCode]) return true;
-
     var forn = String(row.fornecedor || "").toUpperCase();
     if (forn.indexOf(RIO_GRANDE_NAME) >= 0) {
       if (fornCode !== RIO_GRANDE_KEEP_CODE) return true;
