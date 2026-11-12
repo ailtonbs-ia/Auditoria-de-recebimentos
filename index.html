@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="recebimentos.css" />
 </head>
-<body>
+<body class="tab-receb">
   <svg class="fluxo-sprite" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
     <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10 8.5v7l6-3.5z" fill="currentColor" stroke="none"/></symbol>
     <symbol id="i-xml" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></symbol>
@@ -48,15 +48,15 @@
   </header>
 
   <nav class="tabs">
-    <button class="tab active" data-tab="central">Produtividade</button>
-    <button class="tab" data-tab="inc">Inconsistencias</button>
+    <button class="tab active" data-tab="receb">Controle de Recebimentos</button>
     <button class="tab" data-tab="ops">Operacional</button>
-    <button class="tab" data-tab="receb">Controle de Recebimentos</button>
+    <button class="tab" data-tab="inc">Inconsistencias</button>
+    <button class="tab" data-tab="central">Produtividade</button>
     <button class="tab" data-tab="fluxo">Fluxo</button>
   </nav>
 
   <main class="wrap">
-    <div class="filters" id="filters">
+    <div class="filters hidden" id="filters">
       <div id="f-data" hidden></div>
       <div id="f-segmento"></div>
       <div id="f-loja"></div>
@@ -66,10 +66,10 @@
     </div>
 
     <section class="dia-central hidden" id="dia-central"></section>
-    <section class="kpis" id="kpis"></section>
-    <p class="headline" id="headline"></p>
+    <section class="kpis hidden" id="kpis"></section>
+    <p class="headline hidden" id="headline"></p>
 
-    <section id="view-central">
+    <section id="view-central" class="hidden">
       <div class="board">
         <article class="card board-wide">
           <div class="lbl">Top 3 unidades com inconsistencia</div>
@@ -197,7 +197,7 @@
       </div>
     </section>
 
-        <section id="view-receb" class="hidden">
+        <section id="view-receb">
       <div class="page">
         <header class="header" hidden>
           <div class="header-actions">

@@ -107,7 +107,7 @@ function metaLabel(data) {
 }
 
 let DATA = null;
-let TAB = "central";
+let TAB = "receb";
 
 const OPS_SORT_LABEL = {
   data: "Data",
@@ -1869,3 +1869,5 @@ async function load() {
 
 bind();
 load();
+// recebimentos.js carrega depois deste arquivo; o timer espera o script existir.
+setTimeout(() => setTab("receb"), 0);
