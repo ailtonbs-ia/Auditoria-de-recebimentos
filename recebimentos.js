@@ -128,8 +128,12 @@ window.initRecebimentosDash = function initRecebimentosDash() {
 
   function parseDate(raw) {
     if (!raw) return "";
-    var m = String(raw).match(/^(\d{4}-\d{2}-\d{2})/);
-    return m ? m[1] : "";
+    var s = String(raw).trim();
+    var iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return iso[1] + "-" + iso[2] + "-" + iso[3];
+    var br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    if (br) return br[3] + "-" + br[2] + "-" + br[1];
+    return "";
   }
 
   var CAL_MONTHS = [
@@ -563,28 +567,51 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     for (var i = 0; i < header.length; i++) {
       idx[header[i].trim()] = i;
     }
+    var headerLen = header.length;
+    var fornIdx = idx["FORNECEDOR"];
 
     function col(parts, name) {
       var j = idx[name];
       return j == null ? "" : (parts[j] != null ? parts[j] : "");
     }
 
+    // Layout consolidado (NUMERO_NF / SITUACAO_) ou extrato do ERP (NUMERONF / SITUACAO).
+    function colFirst(parts, names) {
+      for (var n = 0; n < names.length; n++) {
+        if (idx[names[n]] != null) return col(parts, names[n]);
+      }
+      return "";
+    }
+
+    function alignParts(parts) {
+      var extra = parts.length - headerLen;
+      if (extra <= 0 || fornIdx == null) return parts;
+      return parts.slice(0, fornIdx).concat(
+        [parts.slice(fornIdx, fornIdx + extra + 1).join(";")],
+        parts.slice(fornIdx + extra + 1)
+      );
+    }
+
     var rows = [];
     for (var li = 1; li < lines.length; li++) {
       var line = lines[li];
       if (!line || !line.trim()) continue;
-      var parts = line.split(";");
-      var dataEmissao = parseDate(col(parts, "DATA_EMISSAO"));
-      var dataEntrada = parseDate(col(parts, "DATA_ENTRADA"));
-      var valor = parseMoney(col(parts, "VALOR_TOTAL"));
-      var situacao = normalizeSituacao(col(parts, "SITUACAO_"));
+      var parts = alignParts(line.split(";"));
+      var dataEmissao = parseDate(colFirst(parts, ["DATA_EMISSAO", "DTAEMISSAO"]));
+      var dataEntrada = parseDate(colFirst(parts, ["DATA_ENTRADA", "DTAENTRADA"]));
+      var valor = parseMoney(colFirst(parts, ["VALOR_TOTAL", "VLRTOTALNF"]));
+      var situacao = normalizeSituacao(colFirst(parts, ["SITUACAO_", "SITUACAO"]));
       var empresa = (col(parts, "EMPRESA") || "").trim();
       var fornecedor = (col(parts, "FORNECEDOR") || "").trim();
-      var cgo = (col(parts, "CGO") || "").trim();
-      var chave = (col(parts, "CHAVE_ACESSO") || "").trim();
-      var nf = (col(parts, "NUMERO_NF") || "").trim();
-      var serie = (col(parts, "SERIE") || "").trim();
-      var sitConf = (col(parts, "SITUACAO_CONFERENCIA") || "").trim();
+      var seqPessoa = (col(parts, "SEQPESSOA") || "").trim();
+      if (seqPessoa && fornecedor.indexOf(seqPessoa + "-") !== 0) {
+        fornecedor = seqPessoa + "-" + fornecedor;
+      }
+      var cgo = (colFirst(parts, ["CGO", "CODGERALOPER"]) || "").trim();
+      var chave = (colFirst(parts, ["CHAVE_ACESSO", "NFECHAVEACESSO"]) || "").trim();
+      var nf = (colFirst(parts, ["NUMERO_NF", "NUMERONF"]) || "").trim();
+      var serie = (colFirst(parts, ["SERIE", "SERIENF"]) || "").trim();
+      var sitConf = (colFirst(parts, ["SITUACAO_CONFERENCIA", "STATUSCARGA"]) || "").trim();
       var atraso = daysBetween(dataEmissao, dataEntrada);
 
       rows.push({

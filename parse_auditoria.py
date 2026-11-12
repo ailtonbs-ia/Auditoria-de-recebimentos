@@ -440,11 +440,11 @@ def _linhas_arquivo(path: Path) -> Iterator[str]:
         yield from fh
 
 
-def historico_git(dest: Path) -> list[str]:
-    """Linhas da ultima versao consolidada do arquivo no git (HEAD)."""
+def historico_git(dest: Path, rev: str = "HEAD") -> list[str]:
+    """Linhas de uma revisão do arquivo (padrão: HEAD)."""
     try:
         res = subprocess.run(
-            ["git", "show", f"HEAD:./{dest.name}"],
+            ["git", "show", f"{rev}:./{dest.name}"],
             cwd=dest.parent,
             capture_output=True,
             timeout=180,
@@ -457,10 +457,29 @@ def historico_git(dest: Path) -> list[str]:
 
 
 def painel_historico_git(dest: Path) -> list[str]:
-    lines = historico_git(dest)
-    if not lines or painel_layout(lines[0]) != "padrao":
-        return []
-    return lines
+    """Última versão no layout padrão.
+
+    O commit atual pode ter gravado o extrato cru do ERP (cabeçalho NUMERONF).
+    Nesse caso volta nos commits anteriores até achar o painel consolidado.
+    """
+    try:
+        res = subprocess.run(
+            ["git", "log", "-n", "15", "--format=%H", "--", dest.name],
+            cwd=dest.parent,
+            capture_output=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        revs = ["HEAD"]
+    else:
+        revs = [r.strip() for r in res.stdout.decode("utf-8", errors="replace").splitlines() if r.strip()]
+        if not revs:
+            revs = ["HEAD"]
+    for rev in revs:
+        lines = historico_git(dest, rev)
+        if lines and painel_layout(lines[0]) == "padrao":
+            return lines
+    return []
 
 
 def split_painel_row(line: str, delim: str) -> list[str] | None:
