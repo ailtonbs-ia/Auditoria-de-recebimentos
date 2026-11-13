@@ -1518,13 +1518,15 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     els.detailTableWrap.innerHTML = "";
   }
 
-  async function loadFromFetch() {
+  async function loadFromFetch(force) {
     setStatus("Carregando Base…", "warn");
     var text;
     if (typeof PAINEL_VIA_SCRIPT !== "undefined" && PAINEL_VIA_SCRIPT) {
       text = await loadPainelEmbutido();
+    } else if (typeof window.fetchPainelBuffer === "function") {
+      text = decodeBaseText(await window.fetchPainelBuffer(force));
     } else {
-      var res = await fetch(DATA_PATH + "?t=" + Date.now());
+      var res = await fetch(DATA_PATH, { cache: "no-cache" });
       if (!res.ok) throw new Error("HTTP " + res.status);
       text = decodeBaseText(await res.arrayBuffer());
     }
@@ -1552,9 +1554,9 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     reader.readAsArrayBuffer(file);
   }
 
-  async function tryAutoLoad() {
+  async function tryAutoLoad(force) {
     try {
-      await loadFromFetch();
+      await loadFromFetch(force);
     } catch (err) {
       onLoadError(err.message || String(err));
     }
@@ -1571,7 +1573,7 @@ window.initRecebimentosDash = function initRecebimentosDash() {
   var reloadBtn = document.getElementById("rb-btnReload");
   if (reloadBtn) {
     reloadBtn.addEventListener("click", function () {
-      tryAutoLoad();
+      tryAutoLoad(true);
     });
   }
 

@@ -160,6 +160,23 @@ function loadPainelEmbutido() {
   return PAINEL_TXT_PROMISE;
 }
 
+/** Download unico do painel (~25 MB) compartilhado com recebimentos.js; "no-cache" revalida via ETag (304) em vez de baixar de novo. */
+let PAINEL_BUF_PROMISE = null;
+
+function fetchPainelBuffer(force) {
+  if (force || !PAINEL_BUF_PROMISE) {
+    PAINEL_BUF_PROMISE = fetch(PAINEL_PATH, { cache: "no-cache" }).then((res) => {
+      if (!res.ok) throw new Error(res.statusText || "HTTP " + res.status);
+      return res.arrayBuffer();
+    });
+    PAINEL_BUF_PROMISE.catch(() => {
+      PAINEL_BUF_PROMISE = null;
+    });
+  }
+  return PAINEL_BUF_PROMISE;
+}
+window.fetchPainelBuffer = fetchPainelBuffer;
+
 function esc(s) {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -586,10 +603,7 @@ async function loadPainel() {
     if (PAINEL_VIA_SCRIPT) {
       PAINEL_ROWS = parsePainelCsv(await loadPainelEmbutido());
     } else {
-      const res = await fetch(PAINEL_PATH + "?t=" + Date.now());
-      if (!res.ok) throw new Error(res.statusText || String(res.status));
-      const buf = await res.arrayBuffer();
-      PAINEL_ROWS = parsePainelCsv(decodePainelText(buf));
+      PAINEL_ROWS = parsePainelCsv(decodePainelText(await fetchPainelBuffer()));
     }
     PAINEL_READY = true;
   } catch (err) {
@@ -1899,5 +1913,9 @@ async function load() {
 
 bind();
 load();
-// recebimentos.js carrega depois deste arquivo; o timer espera o script existir.
-setTimeout(() => setTab("receb"), 0);
+// recebimentos.js carrega depois deste arquivo; online ele pode chegar depois de um setTimeout(0).
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => setTab("receb"));
+} else {
+  setTab("receb");
+}
