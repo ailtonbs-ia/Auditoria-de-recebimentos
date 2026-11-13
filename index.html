@@ -51,7 +51,6 @@
     <button class="tab active" data-tab="receb">Controle de Recebimentos</button>
     <button class="tab" data-tab="ops">Operacional</button>
     <button class="tab" data-tab="inc">Inconsistencias</button>
-    <button class="tab" data-tab="central">Produtividade</button>
     <button class="tab" data-tab="fluxo">Fluxo</button>
   </nav>
 
@@ -68,31 +67,6 @@
     <section class="dia-central hidden" id="dia-central"></section>
     <section class="kpis hidden" id="kpis"></section>
     <p class="headline hidden" id="headline"></p>
-
-    <section id="view-central" class="hidden">
-      <div class="board">
-        <article class="card board-wide">
-          <div class="lbl">Top 3 unidades com inconsistencia</div>
-          <p class="hint">Pendencias em aberto na aba Inconsistencias</p>
-          <div id="top-lojas" class="rank-bars"></div>
-        </article>
-        <article class="card">
-          <div class="lbl">Principais inconsistencias</div>
-          <p class="hint">Top 3 tipos mais recorrentes entre as pendencias em aberto</p>
-          <div id="top-tipos" class="rank-bars"></div>
-        </article>
-        <article class="card">
-          <div class="lbl">Lojas com mais inconsistencia</div>
-          <p class="hint">Top 3 com pendencias de 2 dias ou mais em aberto</p>
-          <div id="top-forn" class="rank-bars"></div>
-        </article>
-      </div>
-      <article class="card">
-        <div class="lbl">Idade das pendencias</div>
-        <p class="hint">Ha quanto tempo as inconsistencias estao em aberto na planilha</p>
-        <div id="idade-pend" class="split-block"></div>
-      </article>
-    </section>
 
     <section id="view-inc" class="hidden">
       <div class="pd-toolbar">

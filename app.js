@@ -1782,7 +1782,6 @@ function setTab(tab) {
   TAB = tab;
   const standalone = tab === "fluxo" || tab === "receb" || tab === "inc";
   document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
-  $("view-central").classList.toggle("hidden", tab !== "central");
   $("view-inc").classList.toggle("hidden", tab !== "inc");
   $("view-ops").classList.toggle("hidden", tab !== "ops");
   $("view-receb").classList.toggle("hidden", tab !== "receb");
@@ -1813,15 +1812,13 @@ function setTab(tab) {
 
 function goHome() {
   closeDrawer();
-  if (!DATA) return;
-  setTab("central");
+  setTab("receb");
 }
 
 function render() {
   if (!DATA || TAB === "fluxo" || TAB === "receb" || TAB === "inc") return;
   renderDiaCentral();
   renderKpis();
-  if (TAB === "central") renderCentral();
   renderOpsTable(filteredOps());
 }
 
@@ -1868,11 +1865,6 @@ function bind() {
     if (!card) return;
     e.preventDefault();
     setTab(card.dataset.gotoTab);
-  });
-  document.addEventListener("pendencias:update", () => {
-    if (!DATA || TAB !== "central") return;
-    renderKpis();
-    renderCentral();
   });
   document.querySelectorAll("[data-fluxo-mode]").forEach((b) => {
     b.addEventListener("click", () => setFluxoMode(b.dataset.fluxoMode));
