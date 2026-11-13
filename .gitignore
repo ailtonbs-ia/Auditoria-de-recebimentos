@@ -1,3 +1,4 @@
 tools/python/
 tools/logs/
 tools/*.lock
+painel.js

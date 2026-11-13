@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import sys
 import unicodedata
 from collections import defaultdict
@@ -36,6 +35,7 @@ TXT_CANDIDATES = [
 ]
 OUT_JSON = BASE / "dados.json"
 OUT_JS = BASE / "dados.js"
+OUT_PAINEL_JS = BASE / "painel.js"
 PAINEL_DEST = BASES_DIR / "Painel de Controle de Recebimentos.txt"
 PAINEL_HEADER = (
     "NUMERO_NF;SERIE;EMPRESA;FORNECEDOR;DATA_EMISSAO;DATA_ENTRADA;CGO;"
@@ -292,13 +292,16 @@ def find_xlsx(pattern: str) -> Path | None:
 
 
 def listar_lotes_auditoria() -> list[Path]:
+    """TXTs de auditoria que entram na consolidacao.
+
+    A base nao guarda historico: o destino so entra quando nao ha outro TXT de auditoria.
+    """
     dest = TXT_CANDIDATES[0]
     dest_res = dest.resolve() if dest.exists() else None
     lotes: list[Path] = []
     seen: set[Path] = set()
-    if dest.exists() and is_audit_txt(dest):
-        lotes.append(dest)
-        seen.add(dest.resolve())
+    if dest_res:
+        seen.add(dest_res)
     for pasta in pastas_lotes():
         for path in sorted(pasta.glob("*.txt"), key=lambda p: p.name.lower()):
             res = path.resolve()
@@ -309,26 +312,22 @@ def listar_lotes_auditoria() -> list[Path]:
             if is_audit_txt(path):
                 lotes.append(path)
                 seen.add(res)
+    if dest_res and not lotes and is_audit_txt(dest):
+        lotes.append(dest)
     return lotes
 
 
 def consolidar_base() -> tuple[Path, int]:
-    """Une TXTs de auditoria da pasta Bases em Auditoria de Recebimentos.txt (base 0), sem duplicar eventos.
+    """Gera Auditoria de Recebimentos.txt (base 0) so com o(s) extrato(s) atual(is), sem duplicar eventos.
 
-    A base 0 e cumulativa: a ultima versao do git entra antes, para nao perder eventos
-    quando o arquivo e sobrescrito por um extrato de periodo menor.
+    Nao ha mescla com versoes anteriores.
     """
     dest = TXT_CANDIDATES[0]
     lotes = listar_lotes_auditoria()
     if not lotes:
         raise FileNotFoundError("Nenhum TXT de auditoria (cabecalho SEQAUXNOTAFISCAL) na pasta Bases.")
 
-    fontes: list[Iterable[str]] = []
-    historico = historico_auditoria_git(dest)
-    if historico and historico[0].strip().lstrip("\ufeff").upper().replace("\t", ";").startswith("SEQAUXNOTAFISCAL"):
-        print(f"Auditoria: historico do git ({len(historico) - 1} linhas) mesclado ao extrato atual.")
-        fontes.append(historico)
-    fontes.extend(_linhas_arquivo(path) for path in lotes)
+    fontes: list[Iterable[str]] = [_linhas_arquivo(path) for path in lotes]
 
     ordered: dict[tuple[str, ...], list[str]] = {}
     lidos = 0
@@ -441,80 +440,6 @@ def _linhas_arquivo(path: Path) -> Iterator[str]:
         yield from fh
 
 
-def historico_git(dest: Path, rev: str = "HEAD") -> list[str]:
-    """Linhas de uma revisão do arquivo (padrão: HEAD)."""
-    try:
-        res = subprocess.run(
-            ["git", "show", f"{rev}:./{dest.name}"],
-            cwd=dest.parent,
-            capture_output=True,
-            timeout=180,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return []
-    if res.returncode != 0:
-        return []
-    return res.stdout.decode("cp1252", errors="replace").splitlines()
-
-
-def historico_auditoria_git(dest: Path) -> list[str]:
-    """Base cumulativa de auditoria.
-
-    O commit atual pode ter gravado só um extrato curto. Nesse caso usa a
-    revisão anterior com mais linhas, para não perder o histórico.
-    """
-    try:
-        res = subprocess.run(
-            ["git", "log", "-n", "20", "--format=%H", "--", dest.name],
-            cwd=dest.parent,
-            capture_output=True,
-            timeout=60,
-        )
-    except (OSError, subprocess.SubprocessError):
-        revs = ["HEAD"]
-    else:
-        revs = [r.strip() for r in res.stdout.decode("utf-8", errors="replace").splitlines() if r.strip()]
-        if not revs:
-            revs = ["HEAD"]
-    melhor: list[str] = []
-    for rev in revs:
-        lines = historico_git(dest, rev)
-        if not lines:
-            continue
-        header = lines[0].strip().lstrip("\ufeff").upper().replace("\t", ";")
-        if not header.startswith("SEQAUXNOTAFISCAL"):
-            continue
-        if len(lines) > len(melhor):
-            melhor = lines
-    return melhor
-
-
-def painel_historico_git(dest: Path) -> list[str]:
-    """Última versão no layout padrão.
-
-    O commit atual pode ter gravado o extrato cru do ERP (cabeçalho NUMERONF).
-    Nesse caso volta nos commits anteriores até achar o painel consolidado.
-    """
-    try:
-        res = subprocess.run(
-            ["git", "log", "-n", "15", "--format=%H", "--", dest.name],
-            cwd=dest.parent,
-            capture_output=True,
-            timeout=60,
-        )
-    except (OSError, subprocess.SubprocessError):
-        revs = ["HEAD"]
-    else:
-        revs = [r.strip() for r in res.stdout.decode("utf-8", errors="replace").splitlines() if r.strip()]
-        if not revs:
-            revs = ["HEAD"]
-    for rev in revs:
-        lines = historico_git(dest, rev)
-        if lines and painel_layout(lines[0]) == "padrao":
-            return lines
-    return []
-
-
 def split_painel_row(line: str, delim: str) -> list[str] | None:
     parts = line.rstrip("\r\n").split(delim)
     if len(parts) < 15:
@@ -538,13 +463,17 @@ def painel_row_key(parts: list[str]) -> str:
 
 
 def listar_lotes_painel() -> list[Path]:
+    """TXTs do painel que entram na consolidacao.
+
+    O painel nao guarda historico: o destino ja consolidado (layout padrao) so entra
+    quando nao ha outro TXT de painel; se for extrato cru do ERP, entra sempre.
+    """
     dest = PAINEL_DEST
     dest_res = dest.resolve() if dest.exists() else None
     lotes: list[Path] = []
     seen: set[Path] = set()
-    if dest.exists() and is_painel_txt(dest):
-        lotes.append(dest)
-        seen.add(dest.resolve())
+    if dest_res:
+        seen.add(dest_res)
     for pasta in pastas_lotes():
         for path in sorted(pasta.glob("*Painel*.txt"), key=lambda p: p.name.lower()):
             res = path.resolve()
@@ -555,24 +484,21 @@ def listar_lotes_painel() -> list[Path]:
             if is_painel_txt(path):
                 lotes.append(path)
                 seen.add(res)
+    if dest_res:
+        layout = painel_layout(_first_line(dest))
+        if layout == "erp" or (layout == "padrao" and not lotes):
+            lotes.insert(0, dest)
     return lotes
 
 
 def consolidar_painel() -> tuple[Path, int]:
-    """Une TXTs do painel de recebimento em Painel de Controle de Recebimentos.txt.
+    """Gera Painel de Controle de Recebimentos.txt so com o(s) extrato(s) atual(is).
 
-    Se o proprio destino foi sobrescrito por um extrato do ERP (cabecalho NUMERONF),
-    a ultima versao consolidada do git entra antes como historico.
+    Notas que sairam do ERP saem do painel; nao ha mescla com versoes anteriores.
     """
     dest = PAINEL_DEST
     lotes = listar_lotes_painel()
-    fontes: list[Iterable[str]] = []
-    if dest.exists() and painel_layout(_first_line(dest)) == "erp":
-        historico = painel_historico_git(dest)
-        if historico:
-            print(f"Painel: historico do git ({len(historico) - 1} linhas) mesclado ao extrato do ERP.")
-            fontes.append(historico)
-    fontes.extend(_linhas_arquivo(path) for path in lotes)
+    fontes: list[Iterable[str]] = [_linhas_arquivo(path) for path in lotes]
     if not lotes:
         print("Nenhum TXT de painel (cabecalho NUMERO_NF ou NUMERONF) na pasta Bases.")
         return dest, 0
@@ -604,6 +530,18 @@ def consolidar_painel() -> tuple[Path, int]:
         f"({lidos} lidas, {atualizados} atualizadas) -> {dest.name}"
     )
     return dest, len(lotes)
+
+
+def gerar_painel_js() -> None:
+    """painel.js: o painel embutido em JS para abrir o index.html direto do disco (file://)."""
+    if not PAINEL_DEST.exists():
+        return
+    texto = PAINEL_DEST.read_text(encoding="cp1252", errors="replace")
+    OUT_PAINEL_JS.write_text(
+        "window.PAINEL_TXT = " + json.dumps(texto, ensure_ascii=False) + ";\n",
+        encoding="utf-8",
+    )
+    print(f"Gerado {OUT_PAINEL_JS.name}")
 
 
 def parse_line(line: str) -> dict | None:
@@ -1325,6 +1263,7 @@ def main() -> int:
     else:
         consolidar_painel()
         path, n_lotes = consolidar_base()
+    gerar_painel_js()
     print(f"Lendo {path} ...")
     payload = parse(path)
     if n_lotes:

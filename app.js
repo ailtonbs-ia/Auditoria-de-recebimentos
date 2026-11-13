@@ -133,6 +133,32 @@ const RIO_GRANDE_KEEP_CODE = "10";
 let PAINEL_ROWS = [];
 let PAINEL_READY = false;
 let PAINEL_LOADING = false;
+let PAINEL_TXT_PROMISE = null;
+
+/** Aberto direto do disco (file://) o navegador bloqueia fetch: o painel vem do painel.js gerado pelo parse. */
+const PAINEL_VIA_SCRIPT = location.protocol === "file:";
+
+function loadPainelEmbutido() {
+  if (!PAINEL_TXT_PROMISE) {
+    PAINEL_TXT_PROMISE = new Promise((resolve, reject) => {
+      if (typeof window.PAINEL_TXT === "string") return resolve(window.PAINEL_TXT);
+      const s = document.createElement("script");
+      s.src = "painel.js";
+      s.charset = "utf-8";
+      s.onload = () =>
+        typeof window.PAINEL_TXT === "string"
+          ? resolve(window.PAINEL_TXT)
+          : reject(new Error("painel.js sem dados"));
+      s.onerror = () =>
+        reject(new Error("painel.js nao encontrado. Rode: powershell -ExecutionPolicy Bypass -File parse_auditoria.ps1"));
+      document.head.appendChild(s);
+    });
+    PAINEL_TXT_PROMISE.catch(() => {
+      PAINEL_TXT_PROMISE = null;
+    });
+  }
+  return PAINEL_TXT_PROMISE;
+}
 
 function esc(s) {
   return String(s ?? "")
@@ -557,10 +583,14 @@ async function loadPainel() {
   if (PAINEL_READY || PAINEL_LOADING) return;
   PAINEL_LOADING = true;
   try {
-    const res = await fetch(PAINEL_PATH + "?t=" + Date.now());
-    if (!res.ok) throw new Error(res.statusText || String(res.status));
-    const buf = await res.arrayBuffer();
-    PAINEL_ROWS = parsePainelCsv(decodePainelText(buf));
+    if (PAINEL_VIA_SCRIPT) {
+      PAINEL_ROWS = parsePainelCsv(await loadPainelEmbutido());
+    } else {
+      const res = await fetch(PAINEL_PATH + "?t=" + Date.now());
+      if (!res.ok) throw new Error(res.statusText || String(res.status));
+      const buf = await res.arrayBuffer();
+      PAINEL_ROWS = parsePainelCsv(decodePainelText(buf));
+    }
     PAINEL_READY = true;
   } catch (err) {
     console.error("Painel (cruzamento):", err);

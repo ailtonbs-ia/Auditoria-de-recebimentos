@@ -10,7 +10,7 @@ if (-not (Test-Path -LiteralPath $basesDir -PathType Container)) {
   else { $basesDir = $base }
 }
 $destTxt = Join-Path $basesDir "auditoria central.txt"
-$destPainel = Join-Path $basesDir "Painel de controle de recebimento.txt"
+$destPainel = Join-Path $basesDir "Painel de Controle de Recebimentos.txt"
 $auditHeader = "SEQAUXNOTAFISCAL;NROEMPRESA;NOMEREDUZIDO;NUMERONF;SERIENF;SEQPESSOA;NOMEPESSOA;TIPNOTAFISCAL;OPERACAO;PRODUTO;DIASPRAZO;DESCGENERICA;VALORANTIGO;VALORNOVO;DTAHORALTERACAO;USUALTERACAO;TERMINALUSUALTERA;APPORIGEM;VERSAOSISTEMA;NFECHAVEACESSO"
 $painelHeader = "NUMERO_NF;SERIE;EMPRESA;FORNECEDOR;DATA_EMISSAO;DATA_ENTRADA;CGO;VALOR_TOTAL;SITUACAO_;SITUACAO;SEQNOTAFISCAL;SEQAUXNOTAFISCAL;SITUACAO_CONFERENCIA;USUARIO_CONFERENCIA;CHAVE_ACESSO"
 
@@ -289,10 +289,8 @@ function Get-RowKey([string[]]$parts) {
 }
 
 function Get-AuditLotes {
+  # A base nao guarda historico: o destino so entra se nao houver outro TXT de auditoria.
   $list = New-Object System.Collections.Generic.List[string]
-  if ((Test-Path -LiteralPath $destTxt) -and (Test-AuditTxt $destTxt)) {
-    $list.Add($destTxt)
-  }
   $destFull = $null
   if (Test-Path -LiteralPath $destTxt) { $destFull = [IO.Path]::GetFullPath($destTxt) }
   $pastas = New-Object System.Collections.Generic.List[string]
@@ -309,7 +307,6 @@ function Get-AuditLotes {
     }
   }
   $seen = New-Object "System.Collections.Generic.HashSet[string]"
-  foreach ($item in $list) { [void]$seen.Add([IO.Path]::GetFullPath($item)) }
   foreach ($pasta in $pastas) {
     Get-ChildItem -LiteralPath $pasta -Filter "*.txt" | Sort-Object Name | ForEach-Object {
       $full = [IO.Path]::GetFullPath($_.FullName)
@@ -320,6 +317,9 @@ function Get-AuditLotes {
         [void]$seen.Add($full)
       }
     }
+  }
+  if (-not $list.Count -and $destFull -and (Test-AuditTxt $destTxt)) {
+    $list.Add($destTxt)
   }
   return $list
 }
@@ -401,14 +401,11 @@ function Get-PainelRowKey([string[]]$parts) {
 }
 
 function Get-PainelLotes {
+  # O painel nao guarda historico: o destino consolidado so entra se nao houver outro TXT de painel.
   $list = New-Object System.Collections.Generic.List[string]
-  if ((Test-Path -LiteralPath $destPainel) -and (Test-PainelTxt $destPainel)) {
-    $list.Add($destPainel)
-  }
   $destFull = $null
   if (Test-Path -LiteralPath $destPainel) { $destFull = [IO.Path]::GetFullPath($destPainel) }
   $seen = New-Object "System.Collections.Generic.HashSet[string]"
-  foreach ($item in $list) { [void]$seen.Add([IO.Path]::GetFullPath($item)) }
   foreach ($pasta in @($basesDir, $base)) {
     if (-not (Test-Path -LiteralPath $pasta -PathType Container)) { continue }
     Get-ChildItem -LiteralPath $pasta -Filter "*Painel*.txt" | Sort-Object Name | ForEach-Object {
@@ -420,6 +417,9 @@ function Get-PainelLotes {
         [void]$seen.Add($full)
       }
     }
+  }
+  if (-not $list.Count -and $destFull -and (Test-PainelTxt $destPainel)) {
+    $list.Add($destPainel)
   }
   return $list
 }
@@ -474,6 +474,15 @@ function Consolidate-Painel {
 $painelOnly = $false
 foreach ($a in $args) { if ("$a" -eq "-PainelOnly") { $painelOnly = $true } }
 [void](Consolidate-Painel)
+
+# painel.js: o painel embutido em JS para abrir o index.html direto do disco (file://).
+if (Test-Path -LiteralPath $destPainel) {
+  Add-Type -AssemblyName System.Web
+  $painelTxt = [System.IO.File]::ReadAllText($destPainel, $enc)
+  $painelJs = 'window.PAINEL_TXT = "' + [System.Web.HttpUtility]::JavaScriptStringEncode($painelTxt) + '";' + "`n"
+  [System.IO.File]::WriteAllText((Join-Path $base "painel.js"), $painelJs, [System.Text.UTF8Encoding]::new($false))
+  Write-Host "Gerado painel.js"
+}
 if ($painelOnly) { exit 0 }
 
 $nLotes = Consolidate-Base

@@ -1520,10 +1520,14 @@ window.initRecebimentosDash = function initRecebimentosDash() {
 
   async function loadFromFetch() {
     setStatus("Carregando Base…", "warn");
-    var res = await fetch(DATA_PATH + "?t=" + Date.now());
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    var buf = await res.arrayBuffer();
-    var text = decodeBaseText(buf);
+    var text;
+    if (typeof PAINEL_VIA_SCRIPT !== "undefined" && PAINEL_VIA_SCRIPT) {
+      text = await loadPainelEmbutido();
+    } else {
+      var res = await fetch(DATA_PATH + "?t=" + Date.now());
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      text = decodeBaseText(await res.arrayBuffer());
+    }
     var rows = parseCsv(text);
     if (!rows.length) throw new Error("Arquivo vazio");
     onDataLoaded(rows, "fetch");
