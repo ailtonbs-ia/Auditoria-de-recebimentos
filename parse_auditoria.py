@@ -324,8 +324,9 @@ def consolidar_base() -> tuple[Path, int]:
         raise FileNotFoundError("Nenhum TXT de auditoria (cabecalho SEQAUXNOTAFISCAL) na pasta Bases.")
 
     fontes: list[Iterable[str]] = []
-    historico = historico_git(dest)
+    historico = historico_auditoria_git(dest)
     if historico and historico[0].strip().lstrip("\ufeff").upper().replace("\t", ";").startswith("SEQAUXNOTAFISCAL"):
+        print(f"Auditoria: historico do git ({len(historico) - 1} linhas) mesclado ao extrato atual.")
         fontes.append(historico)
     fontes.extend(_linhas_arquivo(path) for path in lotes)
 
@@ -454,6 +455,38 @@ def historico_git(dest: Path, rev: str = "HEAD") -> list[str]:
     if res.returncode != 0:
         return []
     return res.stdout.decode("cp1252", errors="replace").splitlines()
+
+
+def historico_auditoria_git(dest: Path) -> list[str]:
+    """Base cumulativa de auditoria.
+
+    O commit atual pode ter gravado só um extrato curto. Nesse caso usa a
+    revisão anterior com mais linhas, para não perder o histórico.
+    """
+    try:
+        res = subprocess.run(
+            ["git", "log", "-n", "20", "--format=%H", "--", dest.name],
+            cwd=dest.parent,
+            capture_output=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        revs = ["HEAD"]
+    else:
+        revs = [r.strip() for r in res.stdout.decode("utf-8", errors="replace").splitlines() if r.strip()]
+        if not revs:
+            revs = ["HEAD"]
+    melhor: list[str] = []
+    for rev in revs:
+        lines = historico_git(dest, rev)
+        if not lines:
+            continue
+        header = lines[0].strip().lstrip("\ufeff").upper().replace("\t", ";")
+        if not header.startswith("SEQAUXNOTAFISCAL"):
+            continue
+        if len(lines) > len(melhor):
+            melhor = lines
+    return melhor
 
 
 def painel_historico_git(dest: Path) -> list[str]:
