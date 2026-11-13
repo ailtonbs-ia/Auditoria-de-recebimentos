@@ -162,13 +162,59 @@ function loadPainelEmbutido() {
 
 /** Download unico do painel (~25 MB) compartilhado com recebimentos.js; "no-cache" revalida via ETag (304) em vez de baixar de novo. */
 let PAINEL_BUF_PROMISE = null;
+/** A Vercel as vezes trava no meio deste arquivo grande; sem bytes por esse tempo, aborta e tenta de novo. */
+const PAINEL_STALL_MS = 15000;
+const PAINEL_TENTATIVAS = 3;
+
+async function baixarPainelUmaVez() {
+  const ctrl = new AbortController();
+  let timer = setTimeout(() => ctrl.abort(), PAINEL_STALL_MS);
+  const rearmar = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => ctrl.abort(), PAINEL_STALL_MS);
+  };
+  try {
+    const res = await fetch(PAINEL_PATH, { cache: "no-cache", signal: ctrl.signal });
+    if (!res.ok) throw new Error(res.statusText || "HTTP " + res.status);
+    if (!res.body || !res.body.getReader) return await res.arrayBuffer();
+    const reader = res.body.getReader();
+    const partes = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      rearmar();
+      partes.push(value);
+      total += value.length;
+    }
+    const out = new Uint8Array(total);
+    let off = 0;
+    for (const p of partes) {
+      out.set(p, off);
+      off += p.length;
+    }
+    return out.buffer;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function baixarPainel() {
+  let ultimoErro = null;
+  for (let i = 1; i <= PAINEL_TENTATIVAS; i++) {
+    try {
+      return await baixarPainelUmaVez();
+    } catch (err) {
+      ultimoErro = err;
+      console.warn(`Painel: tentativa ${i}/${PAINEL_TENTATIVAS} falhou`, err);
+    }
+  }
+  throw new Error(`Nao foi possivel baixar a Base apos ${PAINEL_TENTATIVAS} tentativas (${ultimoErro && ultimoErro.message})`);
+}
 
 function fetchPainelBuffer(force) {
   if (force || !PAINEL_BUF_PROMISE) {
-    PAINEL_BUF_PROMISE = fetch(PAINEL_PATH, { cache: "no-cache" }).then((res) => {
-      if (!res.ok) throw new Error(res.statusText || "HTTP " + res.status);
-      return res.arrayBuffer();
-    });
+    PAINEL_BUF_PROMISE = baixarPainel();
     PAINEL_BUF_PROMISE.catch(() => {
       PAINEL_BUF_PROMISE = null;
     });
