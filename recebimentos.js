@@ -357,7 +357,10 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     if (raw == null || raw === "") return 0;
     var s = String(raw).trim();
     if (!s) return 0;
-    s = s.replace(/\./g, "").replace(",", ".");
+    // Base do ERP usa ponto decimal (335000.02). Formato BR (335.000,02) só quando há vírgula.
+    if (s.indexOf(",") >= 0) {
+      s = s.replace(/\./g, "").replace(",", ".");
+    }
     var n = Number(s);
     return Number.isFinite(n) ? n : 0;
   }
@@ -378,6 +381,7 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     return Number(n || 0).toLocaleString("pt-BR", {
       style: "currency",
       currency: "BRL",
+      minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
   }
@@ -1033,19 +1037,32 @@ window.initRecebimentosDash = function initRecebimentosDash() {
     return html;
   }
 
-  function renderKpis(rows) {
-    var totalValor = 0;
-    var bySit = Object.create(null);
+  function renderKpis(rowsTotal, rowsSit) {
+    // TOTAL segue o filtro completo; cards de situação usam rowsSit
+    // (sem filtro de situação) para não zerar as demais etapas.
+    rowsSit = rowsSit || rowsTotal;
 
-    for (var i = 0; i < rows.length; i++) {
-      var r = rows[i];
-      totalValor += r.valor;
-      bySit[r.situacao] = (bySit[r.situacao] || 0) + 1;
+    var totalValor = 0;
+    for (var i = 0; i < rowsTotal.length; i++) {
+      totalValor += rowsTotal[i].valor;
     }
 
+    var bySit = Object.create(null);
+    for (var j = 0; j < rowsSit.length; j++) {
+      var sit = rowsSit[j].situacao;
+      bySit[sit] = (bySit[sit] || 0) + 1;
+    }
+
+    var totalNotas = formatBR(rowsTotal.length);
+    var totalMoney = formatMoney(totalValor);
     var items = [
-      { v: formatBR(rows.length), l: "Total de notas", cls: "" },
-      { v: formatMoneyShort(totalValor), l: "Valor total", cls: "" },
+      {
+        combo: true,
+        l: "Total",
+        v: totalNotas,
+        money: totalMoney,
+        cls: "kpi-combo",
+      },
     ];
 
     var sitMeta = [
@@ -1063,22 +1080,35 @@ window.initRecebimentosDash = function initRecebimentosDash() {
         v: formatBR(sitCount),
         l: sm.key.charAt(0) + sm.key.slice(1).toLowerCase(),
         cls: sm.cls,
-        foot: sitCount > 0 ? renderKpiLojasFoot(rows, sm.key) : "",
+        foot: sitCount > 0 ? renderKpiLojasFoot(rowsSit, sm.key) : "",
       });
     }
 
     var html = "";
-    for (var j = 0; j < items.length; j++) {
+    for (var k = 0; k < items.length; k++) {
+      if (items[k].combo) {
+        html +=
+          '<article class="card ' + items[k].cls + '">' +
+          '<div class="lbl">' + esc(items[k].l) + "</div>" +
+          '<div class="val">' + esc(items[k].v) +
+          ' <span class="val-unit">notas</span></div>' +
+          '<div class="val is-money" title="' + esc(items[k].money) + '">' +
+          esc(items[k].money) + "</div>" +
+          "</article>";
+        continue;
+      }
       html +=
-        '<article class="card ' + items[j].cls + (items[j].foot ? " has-foot" : "") + '">' +
-        '<div class="lbl">' + esc(items[j].l) + "</div>" +
-        '<div class="val">' + esc(items[j].v) + "</div>" +
-        (items[j].foot || "") +
+        '<article class="card ' + items[k].cls + (items[k].foot ? " has-foot" : "") + '">' +
+        '<div class="lbl">' + esc(items[k].l) + "</div>" +
+        '<div class="val' + (items[k].money ? " is-money" : "") + '"' +
+        (items[k].money ? ' title="' + esc(items[k].v) + '"' : "") +
+        ">" + esc(items[k].v) + "</div>" +
+        (items[k].foot || "") +
         "</article>";
     }
     els.kpiGrid.innerHTML = html;
     els.kpiCaption.textContent =
-      formatBR(rows.length) + " notas no recorte · " + formatMoney(totalValor);
+      formatBR(rowsTotal.length) + " notas no recorte · " + formatMoney(totalValor);
   }
 
   function renderFunil(rows) {
@@ -1441,12 +1471,13 @@ window.initRecebimentosDash = function initRecebimentosDash() {
 
   function renderAll() {
     var f = getFilters();
-    // Funil e KPIs ignoram o filtro de situação para manter a visão geral.
+    // Funil ignora o filtro de situação para manter a visão geral do fluxo.
     var rowsFunil = allRows.filter(function (r) {
       return matchFilters(r, f, { ignoreSituacao: true });
     });
 
-    renderKpis(rowsFunil);
+    // TOTAL: todos os filtros. Cards de situação: ignoram situação (visão do fluxo).
+    renderKpis(filtered, rowsFunil);
     renderFunil(rowsFunil);
     renderRitmo(filtered);
     renderTopTable(
