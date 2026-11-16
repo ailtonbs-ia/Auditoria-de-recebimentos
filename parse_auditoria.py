@@ -365,6 +365,12 @@ def consolidar_base() -> tuple[Path, int]:
     return dest, len(lotes)
 
 
+def painel_col_name(raw: str) -> str:
+    """Nome de coluna do extrato. O ERP as vezes marca a coluna com ' **'."""
+    name = (raw or "").strip().lstrip("\ufeff").upper()
+    return re.sub(r"(?:\s*\*+)+$", "", name).strip()
+
+
 def painel_layout(header: str) -> str:
     h = header.strip().lstrip("\ufeff").upper().replace("\t", ";")
     if h.startswith("NUMERO_NF"):
@@ -420,7 +426,11 @@ def ler_linhas_painel(lines: Iterable[str]) -> Iterator[list[str]]:
     if not layout:
         return
     delim = painel_delim(header)
-    idx = {c.strip().upper(): i for i, c in enumerate(header.strip().lstrip("\ufeff").split(delim))}
+    idx: dict[str, int] = {}
+    for i, col in enumerate(header.strip().lstrip("\ufeff").split(delim)):
+        name = painel_col_name(col)
+        if name and name not in idx:
+            idx[name] = i
     for line in it:
         if not line.strip():
             continue
